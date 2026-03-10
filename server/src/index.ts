@@ -5,6 +5,7 @@ import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth';
 import memberRoutes from './routes/members';
+import banquestRoutes from './routes/banquest';
 import { authMiddleware } from './middleware/auth';
 
 export const prisma = new PrismaClient();
@@ -25,6 +26,7 @@ app.use('/api/auth', authRoutes);
 // Protected routes - all routes below require auth
 app.use('/api', authMiddleware);
 app.use('/api/members', memberRoutes);
+app.use('/api/banquest', banquestRoutes);
 
 // Serve client build in production
 if (process.env.NODE_ENV === 'production') {
