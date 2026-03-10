@@ -1,4 +1,5 @@
 import { prisma } from '../index';
+import Anthropic from '@anthropic-ai/sdk';
 
 interface BanquestRow {
   custNum: string;
@@ -99,6 +100,61 @@ function cleanName(firstName: string, lastName: string, company: string): { firs
     first: titleCase(first || 'Unknown'),
     last: titleCase(last || 'Unknown'),
   };
+}
+
+async function aiFixNames(members: Array<{ firstName: string; lastName: string; email: string | null }>): Promise<Array<{ firstName: string; lastName: string }>> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.log('No ANTHROPIC_API_KEY set, skipping AI name fixing');
+    return members.map(m => ({ firstName: m.firstName, lastName: m.lastName }));
+  }
+
+  const client = new Anthropic({ apiKey });
+
+  const nameList = members.map((m, i) =>
+    `${i}: first="${m.firstName}" last="${m.lastName}" email="${m.email || ''}"`
+  ).join('\n');
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2048,
+      messages: [{
+        role: 'user',
+        content: `You are fixing names imported from a payment system. The names often have issues:
+- First and last names swapped
+- Names in ALL CAPS that need proper casing
+- Hebrew/transliterated names with odd casing
+- Company names in person name fields
+- Duplicate name parts (first name repeated in last name field)
+- Names extracted from company field in "LASTNAME FIRSTNAME" format
+
+For each entry, return the corrected firstName and lastName. Keep the same order.
+Return ONLY a JSON array like: [{"firstName":"John","lastName":"Smith"},...]
+
+Here are the names to fix:
+${nameList}`
+      }]
+    });
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.warn('AI name fix: could not parse response, using original names');
+      return members.map(m => ({ firstName: m.firstName, lastName: m.lastName }));
+    }
+
+    const fixed = JSON.parse(jsonMatch[0]) as Array<{ firstName: string; lastName: string }>;
+    if (fixed.length !== members.length) {
+      console.warn('AI name fix: response length mismatch, using original names');
+      return members.map(m => ({ firstName: m.firstName, lastName: m.lastName }));
+    }
+
+    return fixed;
+  } catch (err) {
+    console.error('AI name fix failed, using original names:', err);
+    return members.map(m => ({ firstName: m.firstName, lastName: m.lastName }));
+  }
 }
 
 function parseTSV(content: string): BanquestRow[] {
@@ -212,6 +268,23 @@ export async function parseAndPreview(fileContent: string): Promise<ParsedMember
       isNew: !existingMemberId,
       issues,
     });
+  }
+
+  // AI-powered name fixing
+  const nameInputs = members.map(m => ({
+    firstName: m.firstName,
+    lastName: m.lastName,
+    email: m.email,
+  }));
+  const fixedNames = await aiFixNames(nameInputs);
+  for (let i = 0; i < members.length; i++) {
+    const original = `${members[i].firstName} ${members[i].lastName}`;
+    const fixed = `${fixedNames[i].firstName} ${fixedNames[i].lastName}`;
+    if (original !== fixed) {
+      members[i].issues.push(`AI fixed name: "${original}" → "${fixed}"`);
+    }
+    members[i].firstName = fixedNames[i].firstName;
+    members[i].lastName = fixedNames[i].lastName;
   }
 
   return members;
