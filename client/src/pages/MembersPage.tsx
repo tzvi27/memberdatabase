@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, Plus, UserCheck, UserX } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Search, Plus, UserCheck, UserX, X } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface Member {
@@ -28,12 +28,15 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filter = searchParams.get('filter');
 
   const loadMembers = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
+      if (filter) params.set('filter', filter);
       params.set('page', String(page));
       params.set('limit', String(PAGE_SIZE));
       const data = await api.get<MembersResponse>(`/members?${params.toString()}`);
@@ -44,7 +47,7 @@ export default function MembersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, page]);
+  }, [search, page, filter]);
 
   useEffect(() => {
     const timeout = setTimeout(loadMembers, 300);
@@ -72,6 +75,15 @@ export default function MembersPage() {
           Add Member
         </button>
       </div>
+
+      {filter && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1 rounded-full bg-red-100 text-red-700">
+            {filter === 'needs-attention' ? 'Needs Attention (Failed Payments)' : filter}
+            <button onClick={() => setSearchParams({})} className="ml-1 hover:text-red-900"><X size={12} /></button>
+          </span>
+        </div>
+      )}
 
       <div className="relative mb-4">
         <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />

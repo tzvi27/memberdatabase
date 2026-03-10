@@ -6,18 +6,22 @@ const router = Router();
 // List members with search and pagination
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { search, page = '1', limit = '50' } = req.query;
+    const { search, page = '1', limit = '50', filter } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where = search
-      ? {
-          OR: [
-            { firstName: { contains: String(search), mode: 'insensitive' as const } },
-            { lastName: { contains: String(search), mode: 'insensitive' as const } },
-            { email: { contains: String(search), mode: 'insensitive' as const } },
-          ],
-        }
-      : {};
+    const where: any = {};
+
+    if (search) {
+      where.OR = [
+        { firstName: { contains: String(search), mode: 'insensitive' } },
+        { lastName: { contains: String(search), mode: 'insensitive' } },
+        { email: { contains: String(search), mode: 'insensitive' } },
+      ];
+    }
+
+    if (filter === 'needs-attention') {
+      where.recurringDonations = { some: { failures: { gt: 0 } } };
+    }
 
     const [members, total] = await Promise.all([
       prisma.member.findMany({
@@ -201,7 +205,7 @@ router.post('/:primaryId/merge/:secondaryId', async (req: Request, res: Response
         data: { memberId: primaryId },
       });
 
-      // Backfill null fields on primary from secondary
+      // Collect backfill data before deleting secondary
       const fillableFields = [
         'email', 'phone', 'street', 'city', 'state', 'zip',
         'country', 'notes', 'aliyahName', 'wifeName', 'seatNumber',
@@ -214,15 +218,16 @@ router.post('/:primaryId/merge/:secondaryId', async (req: Request, res: Response
         }
       }
 
+      // Delete secondary first to avoid unique constraint violations (e.g. email)
+      await tx.member.delete({ where: { id: secondaryId } });
+
+      // Then backfill null fields on primary from secondary
       if (Object.keys(updateData).length > 0) {
         await tx.member.update({
           where: { id: primaryId },
           data: updateData,
         });
       }
-
-      // Delete the secondary member
-      await tx.member.delete({ where: { id: secondaryId } });
     });
 
     // Return updated primary with all relations
@@ -237,9 +242,12 @@ router.post('/:primaryId/merge/:secondaryId', async (req: Request, res: Response
     });
 
     res.json(merged);
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error merging members:', err);
-    res.status(500).json({ message: 'Failed to merge members' });
+    const message = err?.code === 'P2002'
+      ? `Merge failed: duplicate value on ${err.meta?.target || 'unique field'}`
+      : 'Failed to merge members';
+    res.status(500).json({ message });
   }
 });
 
