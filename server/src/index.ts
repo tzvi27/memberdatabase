@@ -6,6 +6,9 @@ import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth';
 import memberRoutes from './routes/members';
 import banquestRoutes from './routes/banquest';
+import donationRoutes from './routes/donations';
+import billRoutes from './routes/bills';
+import zelleRoutes from './routes/zelle';
 import { authMiddleware } from './middleware/auth';
 
 export const prisma = new PrismaClient();
@@ -27,6 +30,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api', authMiddleware);
 app.use('/api/members', memberRoutes);
 app.use('/api/banquest', banquestRoutes);
+app.use('/api/members', donationRoutes);
+app.use('/api/members', billRoutes);
+app.use('/api/zelle', zelleRoutes);
 
 // Serve client build in production
 if (process.env.NODE_ENV === 'production') {
