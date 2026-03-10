@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit2, Save, X, Plus } from 'lucide-react';
+import { ArrowLeft, Edit2, Save, X, Plus, Download, FileText } from 'lucide-react';
 import { api } from '../lib/api';
+import { getToken } from '../lib/auth';
 
 interface RecurringDonation {
   id: string;
@@ -192,6 +193,9 @@ export default function MemberProfilePage() {
           <p className="text-xl font-bold text-red-600">${unpaidBills.toFixed(2)}</p>
         </div>
       </div>
+
+      {/* Annual Receipt */}
+      <AnnualReceiptSection memberId={member.id} />
 
       {/* Notes */}
       <div className="bg-background rounded-lg border border-border p-4 mb-4">
@@ -385,7 +389,7 @@ function DonationsTab({ items, memberId, onAdded }: { items: OneTimeDonation[]; 
       {!items.length && !showForm ? <p className="text-sm text-muted-foreground">No one-time donations yet.</p> : items.length > 0 && (
         <table className="w-full text-sm">
           <thead><tr className="text-left text-muted-foreground">
-            <th className="pb-2">Date</th><th className="pb-2">Amount</th><th className="pb-2">Source</th><th className="pb-2">Description</th>
+            <th className="pb-2">Date</th><th className="pb-2">Amount</th><th className="pb-2">Source</th><th className="pb-2">Description</th><th className="pb-2"></th>
           </tr></thead>
           <tbody>
             {items.map(d => (
@@ -394,6 +398,7 @@ function DonationsTab({ items, memberId, onAdded }: { items: OneTimeDonation[]; 
                 <td className="py-2">${Number(d.amount).toFixed(2)}</td>
                 <td className="py-2 capitalize">{d.source.toLowerCase().replace('_', ' ')}</td>
                 <td className="py-2">{d.description || '-'}</td>
+                <td className="py-2"><DownloadPDF url={`/api/members/${memberId}/receipt/${d.id}`} label="Receipt" /></td>
               </tr>
             ))}
           </tbody>
@@ -510,10 +515,76 @@ function BillsTab({ items, memberId, onAdded }: { items: Bill[]; memberId: strin
                   <span>{li.itemName}</span><span>${Number(li.amount).toFixed(2)}</span>
                 </div>
               ))}
+              <div className="mt-2 pt-2 border-t border-border">
+                <DownloadPDF url={`/api/members/${memberId}/invoice/${b.id}`} label="Download Invoice" />
+              </div>
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function DownloadPDF({ url, label }: { url: string; label: string }) {
+  function handleDownload() {
+    const token = getToken();
+    const a = document.createElement('a');
+    // Use fetch to get the PDF with auth header
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.blob())
+      .then(blob => {
+        a.href = URL.createObjectURL(blob);
+        a.download = `${label}.pdf`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+  }
+  return (
+    <button onClick={handleDownload} className="flex items-center gap-1 text-xs text-accent hover:underline">
+      <Download size={12} /> {label}
+    </button>
+  );
+}
+
+function AnnualReceiptSection({ memberId }: { memberId: string }) {
+  const currentYear = new Date().getFullYear();
+  const [startDate, setStartDate] = useState(`${currentYear - 1}-01-01`);
+  const [endDate, setEndDate] = useState(`${currentYear - 1}-12-31`);
+
+  function handleDownload() {
+    const token = getToken();
+    const url = `/api/members/${memberId}/annual-receipt?start=${startDate}&end=${endDate}`;
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.blob())
+      .then(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'annual-receipt.pdf';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+  }
+
+  return (
+    <div className="bg-background rounded-lg border border-border p-4 mb-4">
+      <h3 className="text-sm font-medium mb-2 flex items-center gap-2"><FileText size={14} /> Annual Donation Receipt</h3>
+      <div className="flex items-end gap-3">
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">From</label>
+          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+            className="px-2 py-1 border border-border rounded text-sm" />
+        </div>
+        <div>
+          <label className="block text-xs text-muted-foreground mb-1">To</label>
+          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+            className="px-2 py-1 border border-border rounded text-sm" />
+        </div>
+        <button onClick={handleDownload}
+          className="flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm hover:opacity-90">
+          <Download size={14} /> Generate PDF
+        </button>
+      </div>
     </div>
   );
 }
