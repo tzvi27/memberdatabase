@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Member {
+  id         String   @id @default(uuid())
+  firstName  String
+  lastName   String
+  email      String?  @unique
+  phone      String?
+  street     String?
+  city       String?
+  state      String?
+  zip        String?
+  country    String?
+  notes      String?
+  status     Status   @default(ACTIVE)
+  aliyahName String?
+  wifeName   String?
+  seatNumber Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  recurringDonations RecurringDonation[]
+  oneTimeDonations   OneTimeDonation[]
+  bills              Bill[]
+  zellePayments      ZellePayment[]
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+model RecurringDonation {
+  id          String    @id @default(uuid())
+  memberId    String
+  member      Member    @relation(fields: [memberId], references: [id])
+  amount      Decimal
+  frequency   Frequency
+  status      String
+  startDate   DateTime
+  nextDueDate DateTime?
+  description String?
+  banquestId  String?   @unique
+  numLeft     String?
+  failures    Int       @default(0)
+  cardLast4   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+enum Frequency {
+  MONTHLY
+  ANNUAL
+}
+
+model OneTimeDonation {
+  id          String         @id @default(uuid())
+  memberId    String
+  member      Member         @relation(fields: [memberId], references: [id])
+  amount      Decimal
+  date        DateTime
+  source      DonationSource
+  description String?
+  notes       String?
+  createdAt   DateTime       @default(now())
+}
+
+enum DonationSource {
+  ZELLE
+  CASH
+  CHECK
+  CREDIT_CARD
+  OTHER
+}
+
+model Bill {
+  id          String       @id @default(uuid())
+  memberId    String
+  member      Member       @relation(fields: [memberId], references: [id])
+  totalAmount Decimal
+  date        DateTime
+  status      BillStatus   @default(UNPAID)
+  notes       String?
+  lineItems   BillLineItem[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+enum BillStatus {
+  PAID
+  UNPAID
+  PARTIAL
+}
+
+model BillLineItem {
+  id       String  @id @default(uuid())
+  billId   String
+  bill     Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  itemName String
+  amount   Decimal
+}
+
+model ZellePayment {
+  id                String   @id @default(uuid())
+  memberId          String?
+  member            Member?  @relation(fields: [memberId], references: [id])
+  amount            Decimal
+  date              DateTime
+  senderName        String
+  transactionNumber String?  @unique
+  matched           Boolean  @default(false)
+  rawData           String?
+  createdAt         DateTime @default(now())
+}
+
+model Settings {
+  id       String  @id @default("singleton")
+  logoPath String?
+}
