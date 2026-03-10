@@ -164,8 +164,7 @@ router.delete('/:id/permanent', async (req: Request, res: Response) => {
 // Merge two members: absorb secondaryId into primaryId
 router.post('/:primaryId/merge/:secondaryId', async (req: Request, res: Response) => {
   try {
-    const primaryId = req.params.primaryId as string;
-    const secondaryId = req.params.secondaryId as string;
+    const { primaryId, secondaryId } = req.params;
 
     if (primaryId === secondaryId) {
       res.status(400).json({ message: 'Cannot merge a member with themselves' });
