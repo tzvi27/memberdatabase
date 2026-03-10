@@ -40,7 +40,7 @@ enum Status {
 model RecurringDonation {
   id          String    @id @default(uuid())
   memberId    String
-  member      Member    @relation(fields: [memberId], references: [id])
+  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
   amount      Decimal
   frequency   Frequency
   status      String
@@ -63,7 +63,7 @@ enum Frequency {
 model OneTimeDonation {
   id          String         @id @default(uuid())
   memberId    String
-  member      Member         @relation(fields: [memberId], references: [id])
+  member      Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
   amount      Decimal
   date        DateTime
   source      DonationSource
@@ -83,7 +83,7 @@ enum DonationSource {
 model Bill {
   id          String       @id @default(uuid())
   memberId    String
-  member      Member       @relation(fields: [memberId], references: [id])
+  member      Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
   totalAmount Decimal
   date        DateTime
   status      BillStatus   @default(UNPAID)
@@ -110,7 +110,7 @@ model BillLineItem {
 model ZellePayment {
   id                String   @id @default(uuid())
   memberId          String?
-  member            Member?  @relation(fields: [memberId], references: [id])
+  member            Member?  @relation(fields: [memberId], references: [id], onDelete: SetNull)
   amount            Decimal
   date              DateTime
   senderName        String

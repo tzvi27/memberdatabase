@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit2, Save, X, Plus, Download, FileText } from 'lucide-react';
+import { ArrowLeft, Edit2, Save, X, Plus, Download, FileText, Trash2, GitMerge } from 'lucide-react';
 import { api } from '../lib/api';
 import { getToken } from '../lib/auth';
 
@@ -75,6 +75,9 @@ export default function MemberProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'recurring' | 'donations' | 'bills' | 'zelle'>('recurring');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showMerge, setShowMerge] = useState(false);
 
   const loadMember = useCallback(async () => {
     try {
@@ -124,6 +127,18 @@ export default function MemberProfilePage() {
     }
   }
 
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await api.delete(`/members/${id}/permanent`);
+      navigate('/members');
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete member');
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  }
+
   if (loading) return <div className="p-6 text-muted-foreground">Loading...</div>;
   if (!member) return <div className="p-6 text-destructive">{error || 'Member not found'}</div>;
 
@@ -151,9 +166,17 @@ export default function MemberProfilePage() {
             }`}>{member.status}</span>
           </div>
           {!editing ? (
-            <button onClick={startEdit} className="flex items-center gap-1 text-sm text-accent hover:underline">
-              <Edit2 size={14} /> Edit
-            </button>
+            <div className="flex gap-3">
+              <button onClick={startEdit} className="flex items-center gap-1 text-sm text-accent hover:underline">
+                <Edit2 size={14} /> Edit
+              </button>
+              <button onClick={() => setShowMerge(true)} className="flex items-center gap-1 text-sm text-accent hover:underline">
+                <GitMerge size={14} /> Merge
+              </button>
+              <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-1 text-sm text-destructive hover:underline">
+                <Trash2 size={14} /> Delete
+              </button>
+            </div>
           ) : (
             <div className="flex gap-2">
               <button onClick={() => setEditing(false)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -237,6 +260,34 @@ export default function MemberProfilePage() {
           {activeTab === 'zelle' && <ZelleTab items={member.zellePayments} />}
         </div>
       </div>
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-background rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold mb-2">Delete Member</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Are you sure you want to permanently delete <strong>{member.firstName} {member.lastName}</strong>?
+              This will also delete all their transactions (donations, bills, recurring donations).
+              This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowDeleteConfirm(false)} disabled={deleting}
+                className="px-4 py-2 border border-border rounded-md text-sm hover:bg-muted">Cancel</button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm hover:opacity-90 disabled:opacity-50">
+                {deleting ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMerge && (
+        <MergeModal
+          currentMember={member}
+          onClose={() => setShowMerge(false)}
+          onMerged={loadMember}
+        />
+      )}
     </div>
   );
 }
@@ -607,6 +658,105 @@ function ZelleTab({ items }: { items: ZellePayment[] }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+function MergeModal({ currentMember, onClose, onMerged }: {
+  currentMember: Member;
+  onClose: () => void;
+  onMerged: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState<{ id: string; firstName: string; lastName: string; email: string | null }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<typeof results[0] | null>(null);
+  const [merging, setMerging] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (search.length < 2) { setResults([]); return; }
+    const timeout = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const data = await api.get<{ members: typeof results }>(`/members?search=${encodeURIComponent(search)}&limit=10`);
+        setResults(data.members.filter(m => m.id !== currentMember.id));
+      } catch { /* ignore */ }
+      finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [search, currentMember.id]);
+
+  async function handleMerge() {
+    if (!selected) return;
+    setMerging(true);
+    setError('');
+    try {
+      await api.post(`/members/${currentMember.id}/merge/${selected.id}`);
+      onMerged();
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Merge failed');
+    } finally {
+      setMerging(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-background rounded-lg shadow-xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-bold mb-2">Merge Member</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Search for a duplicate member to merge into <strong>{currentMember.firstName} {currentMember.lastName}</strong>.
+          All transactions from the selected member will be transferred here, and the other member will be deleted.
+        </p>
+        <input
+          type="text"
+          placeholder="Search by name or email..."
+          value={search}
+          onChange={e => { setSearch(e.target.value); setSelected(null); }}
+          className="w-full px-3 py-2 border border-border rounded-md text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          autoFocus
+        />
+        {searching && <p className="text-xs text-muted-foreground">Searching...</p>}
+        {results.length > 0 && !selected && (
+          <div className="border border-border rounded-md max-h-48 overflow-y-auto mb-3">
+            {results.map(m => (
+              <button
+                key={m.id}
+                onClick={() => setSelected(m)}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-muted border-b border-border last:border-b-0"
+              >
+                {m.lastName}, {m.firstName} {m.email ? `(${m.email})` : ''}
+              </button>
+            ))}
+          </div>
+        )}
+        {selected && (
+          <div className="border border-accent rounded-md p-3 mb-3 bg-accent/5">
+            <p className="text-sm font-medium">
+              Merge &quot;{selected.firstName} {selected.lastName}&quot; into &quot;{currentMember.firstName} {currentMember.lastName}&quot;
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              All transactions from {selected.firstName} will be moved here.
+              {selected.firstName} {selected.lastName} will be permanently deleted.
+            </p>
+          </div>
+        )}
+        {error && <p className="text-destructive text-sm mb-2">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 border border-border rounded-md text-sm hover:bg-muted">
+            Cancel
+          </button>
+          <button
+            onClick={handleMerge}
+            disabled={!selected || merging}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90 disabled:opacity-50"
+          >
+            {merging ? 'Merging...' : 'Merge Members'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
