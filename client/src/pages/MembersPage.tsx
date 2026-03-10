@@ -18,10 +18,13 @@ interface MembersResponse {
   total: number;
 }
 
+const PAGE_SIZE = 50;
+
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const navigate = useNavigate();
@@ -29,8 +32,11 @@ export default function MembersPage() {
   const loadMembers = useCallback(async () => {
     setLoading(true);
     try {
-      const params = search ? `?search=${encodeURIComponent(search)}` : '';
-      const data = await api.get<MembersResponse>(`/members${params}`);
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      params.set('page', String(page));
+      params.set('limit', String(PAGE_SIZE));
+      const data = await api.get<MembersResponse>(`/members?${params.toString()}`);
       setMembers(data.members);
       setTotal(data.total);
     } catch (err) {
@@ -38,12 +44,14 @@ export default function MembersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, page]);
 
   useEffect(() => {
     const timeout = setTimeout(loadMembers, 300);
     return () => clearTimeout(timeout);
   }, [loadMembers]);
+
+  useEffect(() => { setPage(1); }, [search]);
 
   function getMonthlyTotal(member: Member): number {
     return member.recurringDonations.reduce((sum, d) => {
@@ -131,6 +139,30 @@ export default function MembersPage() {
           </tbody>
         </table>
       </div>
+
+      {!loading && total > 0 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
+          <span>
+            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total} members
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(p => p - 1)}
+              disabled={page <= 1}
+              className="px-3 py-1 border border-border rounded-md hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={page * PAGE_SIZE >= total}
+              className="px-3 py-1 border border-border rounded-md hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {showAdd && <AddMemberModal onClose={() => setShowAdd(false)} onSaved={loadMembers} />}
     </div>
