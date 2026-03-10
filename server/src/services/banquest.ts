@@ -298,6 +298,10 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
   for (const m of members) {
     let memberId: string;
 
+    // Determine member status: INACTIVE if all subscriptions are disabled
+    const allInactive = m.subscriptions.length > 0 && m.subscriptions.every(s => s.status === 'inactive');
+    const memberStatus = allInactive ? 'INACTIVE' : 'ACTIVE';
+
     if (m.existingMemberId) {
       // Update existing member
       await prisma.member.update({
@@ -311,6 +315,7 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
           state: m.state,
           zip: m.zip,
           country: m.country,
+          status: memberStatus,
         },
       });
       memberId = m.existingMemberId;
@@ -329,6 +334,7 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
           zip: m.zip,
           country: m.country,
           notes: m.notes,
+          status: memberStatus,
         },
       });
       memberId = member.id;

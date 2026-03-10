@@ -52,6 +52,7 @@ export default function DashboardPage() {
           subtitle="Failed payments"
           color={data.needsAttention > 0 ? 'text-red-600' : 'text-green-600'}
           bgColor={data.needsAttention > 0 ? 'bg-red-50' : 'bg-green-50'}
+          onClick={() => navigate('/members?filter=needs-attention')}
         />
         <DashboardCard
           icon={FileText}
