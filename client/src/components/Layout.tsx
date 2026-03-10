@@ -1,0 +1,61 @@
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Users, Upload, CreditCard, LogOut } from 'lucide-react';
+import { clearToken } from '../lib/auth';
+
+const navItems = [
+  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/members', icon: Users, label: 'Members' },
+  { to: '/import', icon: Upload, label: 'Import' },
+  { to: '/zelle', icon: CreditCard, label: 'Zelle' },
+];
+
+export default function Layout() {
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    clearToken();
+    navigate('/login');
+  }
+
+  return (
+    <div className="flex min-h-screen">
+      <aside className="w-56 bg-primary text-primary-foreground flex flex-col">
+        <div className="p-4 border-b border-white/10">
+          <h1 className="text-lg font-bold">KNY</h1>
+          <p className="text-xs opacity-70">Member Management</p>
+        </div>
+        <nav className="flex-1 p-2 space-y-1">
+          {navItems.map(({ to, icon: Icon, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                  isActive
+                    ? 'bg-white/20 font-medium'
+                    : 'hover:bg-white/10 opacity-80'
+                }`
+              }
+            >
+              <Icon size={18} />
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="p-2 border-t border-white/10">
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-3 py-2 rounded-md text-sm opacity-80 hover:bg-white/10 w-full"
+          >
+            <LogOut size={18} />
+            Sign Out
+          </button>
+        </div>
+      </aside>
+      <main className="flex-1 bg-muted overflow-auto">
+        <Outlet />
+      </main>
+    </div>
+  );
+}

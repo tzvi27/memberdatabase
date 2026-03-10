@@ -1,7 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
+import authRoutes from './routes/auth';
+import { authMiddleware } from './middleware/auth';
 
 export const prisma = new PrismaClient();
 
@@ -12,10 +15,14 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Routes will be added here as we build them
+// Public routes
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
+app.use('/api/auth', authRoutes);
+
+// Protected routes - all routes below require auth
+app.use('/api', authMiddleware);
 
 // Serve client build in production
 if (process.env.NODE_ENV === 'production') {

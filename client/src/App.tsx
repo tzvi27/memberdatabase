@@ -1,6 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { isAuthenticated } from './lib/auth';
+import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import MembersPage from './pages/MembersPage';
+import MemberProfilePage from './pages/MemberProfilePage';
+import BanquestImportPage from './pages/BanquestImportPage';
+import ZellePage from './pages/ZellePage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) {
@@ -15,15 +21,18 @@ function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
-          path="/*"
           element={
             <ProtectedRoute>
-              <div className="p-8 text-center text-muted-foreground">
-                Dashboard coming soon...
-              </div>
+              <Layout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/members" element={<MembersPage />} />
+          <Route path="/members/:id" element={<MemberProfilePage />} />
+          <Route path="/import" element={<BanquestImportPage />} />
+          <Route path="/zelle" element={<ZellePage />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );
