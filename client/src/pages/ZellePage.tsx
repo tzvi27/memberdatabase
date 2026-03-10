@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Upload, CheckCircle, AlertTriangle, Search } from 'lucide-react';
+import { Upload, CheckCircle, Search } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface ZellePayment {
