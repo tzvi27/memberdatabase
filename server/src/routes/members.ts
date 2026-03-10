@@ -251,4 +251,20 @@ router.post('/:primaryId/merge/:secondaryId', async (req: Request, res: Response
   }
 });
 
+// Update a recurring donation (description)
+router.patch('/recurring-donations/:donationId', async (req: Request, res: Response) => {
+  try {
+    const donationId = req.params.donationId as string;
+    const { description } = req.body;
+    const updated = await prisma.recurringDonation.update({
+      where: { id: donationId },
+      data: { description: description || null },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error('Error updating recurring donation:', err);
+    res.status(500).json({ message: 'Failed to update recurring donation' });
+  }
+});
+
 export default router;

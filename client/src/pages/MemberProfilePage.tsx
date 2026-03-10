@@ -14,6 +14,7 @@ interface RecurringDonation {
   description: string | null;
   failures: number;
   numLeft: string | null;
+  cardLast4: string | null;
 }
 
 interface OneTimeDonation {
@@ -254,7 +255,7 @@ export default function MemberProfilePage() {
         </div>
 
         <div className="p-4">
-          {activeTab === 'recurring' && <RecurringTab items={member.recurringDonations} />}
+          {activeTab === 'recurring' && <RecurringTab items={member.recurringDonations} onUpdated={loadMember} />}
           {activeTab === 'donations' && <DonationsTab items={member.oneTimeDonations} memberId={member.id} onAdded={loadMember} />}
           {activeTab === 'bills' && <BillsTab items={member.bills} memberId={member.id} onAdded={loadMember} />}
           {activeTab === 'zelle' && <ZelleTab items={member.zellePayments} />}
@@ -348,20 +349,54 @@ function Field({ label, value, onChange, type = 'text' }: { label: string; value
   );
 }
 
-function RecurringTab({ items }: { items: RecurringDonation[] }) {
+function RecurringTab({ items, onUpdated }: { items: RecurringDonation[]; onUpdated: () => void }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+
+  async function saveDescription(id: string) {
+    try {
+      await api.patch(`/members/recurring-donations/${id}`, { description: editValue });
+      setEditingId(null);
+      onUpdated();
+    } catch { /* ignore */ }
+  }
+
   if (!items.length) return <p className="text-sm text-muted-foreground">No recurring donations.</p>;
   return (
     <table className="w-full text-sm">
       <thead><tr className="text-left text-muted-foreground">
         <th className="pb-2">Description</th><th className="pb-2">Amount</th><th className="pb-2">Frequency</th>
-        <th className="pb-2">Status</th><th className="pb-2">Next Due</th><th className="pb-2">Failures</th>
+        <th className="pb-2">Card</th><th className="pb-2">Status</th><th className="pb-2">Next Due</th><th className="pb-2">Failures</th>
       </tr></thead>
       <tbody>
         {items.map(d => (
           <tr key={d.id} className="border-t border-border">
-            <td className="py-2">{d.description || '-'}</td>
+            <td className="py-2">
+              {editingId === d.id ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveDescription(d.id); if (e.key === 'Escape') setEditingId(null); }}
+                    className="px-2 py-1 border border-border rounded text-sm w-full focus:outline-none focus:ring-2 focus:ring-accent"
+                    autoFocus
+                  />
+                  <button onClick={() => saveDescription(d.id)} className="text-green-600 hover:text-green-800"><Save size={14} /></button>
+                  <button onClick={() => setEditingId(null)} className="text-muted-foreground hover:text-foreground"><X size={14} /></button>
+                </div>
+              ) : (
+                <span
+                  className="cursor-pointer hover:text-accent"
+                  onClick={() => { setEditingId(d.id); setEditValue(d.description || ''); }}
+                  title="Click to edit"
+                >
+                  {d.description || '-'}
+                </span>
+              )}
+            </td>
             <td className="py-2">${Number(d.amount).toFixed(2)}</td>
             <td className="py-2 capitalize">{d.frequency.toLowerCase()}</td>
+            <td className="py-2 text-muted-foreground">{d.cardLast4 ? `••${d.cardLast4}` : '-'}</td>
             <td className="py-2">
               <span className={`text-xs px-2 py-0.5 rounded-full ${
                 d.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
