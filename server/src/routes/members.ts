@@ -42,8 +42,9 @@ router.get('/', async (req: Request, res: Response) => {
 // Get single member with all related data
 router.get('/:id', async (req: Request, res: Response) => {
   try {
+    const id = req.params.id as string;
     const member = await prisma.member.findUnique({
-      where: { id: req.params.id },
+      where: { id },
       include: {
         recurringDonations: { orderBy: { createdAt: 'desc' } },
         oneTimeDonations: { orderBy: { date: 'desc' } },
@@ -102,10 +103,11 @@ router.post('/', async (req: Request, res: Response) => {
 // Update member
 router.put('/:id', async (req: Request, res: Response) => {
   try {
+    const id = req.params.id as string;
     const { firstName, lastName, email, phone, street, city, state, zip, country, notes, status, aliyahName, wifeName, seatNumber } = req.body;
 
     const member = await prisma.member.update({
-      where: { id: req.params.id },
+      where: { id },
       data: {
         firstName, lastName,
         email: email || null,
@@ -130,8 +132,9 @@ router.put('/:id', async (req: Request, res: Response) => {
 // Soft delete (set inactive)
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
+    const id = req.params.id as string;
     await prisma.member.update({
-      where: { id: req.params.id },
+      where: { id },
       data: { status: 'INACTIVE' },
     });
     res.json({ message: 'Member deactivated' });
