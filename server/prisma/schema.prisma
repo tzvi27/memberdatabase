@@ -62,13 +62,15 @@ enum Frequency {
 
 model OneTimeDonation {
   id          String         @id @default(uuid())
-  memberId    String
-  member      Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId    String?
+  member      Member?        @relation(fields: [memberId], references: [id], onDelete: Cascade)
   amount      Decimal
   date        DateTime
   source      DonationSource
   description String?
   notes       String?
+  donorName   String?
+  externalId  String?        @unique
   createdAt   DateTime       @default(now())
 }
 
@@ -77,6 +79,7 @@ enum DonationSource {
   CASH
   CHECK
   CREDIT_CARD
+  DONORS_FUND
   OTHER
 }
 

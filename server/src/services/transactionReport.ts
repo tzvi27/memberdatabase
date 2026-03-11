@@ -9,6 +9,7 @@ interface TransactionRow {
   firstName: string;
   lastName: string;
   email: string | null;
+  transactionId: string | null;
 }
 
 export interface ParsedTransaction {
@@ -20,9 +21,11 @@ export interface ParsedTransaction {
   firstName: string;
   lastName: string;
   email: string | null;
+  transactionId: string | null;
   matchedMemberId: string | null;
   matchedMemberName: string | null;
   matchType: 'email' | 'name' | 'none';
+  isDuplicate: boolean;
 }
 
 export interface TransactionImportPreview {
@@ -31,6 +34,7 @@ export interface TransactionImportPreview {
     total: number;
     matched: number;
     unmatched: number;
+    duplicates: number;
     totalAmount: number;
   };
 }
@@ -39,7 +43,6 @@ function parseCSV(content: string): TransactionRow[] {
   const lines = content.split('\n').filter(l => l.trim());
   if (lines.length < 2) return [];
 
-  // Handle CSV with possible quoted fields
   function splitCSVLine(line: string): string[] {
     const fields: string[] = [];
     let current = '';
@@ -56,7 +59,7 @@ function parseCSV(content: string): TransactionRow[] {
       } else if (ch === ',' && !inQuotes) {
         fields.push(current.trim());
         current = '';
-      } else {
+      } else if (ch !== '\r') {
         current += ch;
       }
     }
@@ -71,7 +74,7 @@ function parseCSV(content: string): TransactionRow[] {
     if (fields.length < 13) continue;
 
     const [_txType, _status, _result, dateStr, _merchant, description, amountStr,
-      _currency, cardHolder, cardNumber, billingFirst, billingLast, email] = fields;
+      _currency, cardHolder, cardNumber, billingFirst, billingLast, email, transactionId] = fields;
 
     // Parse date: "MM/DD/YY HH:MM:SS"
     const dateParts = dateStr?.match(/(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
@@ -84,7 +87,6 @@ function parseCSV(content: string): TransactionRow[] {
     const amount = parseFloat(amountStr) || 0;
     if (amount <= 0) continue;
 
-    // Extract card last 4
     const cardLast4 = cardNumber?.replace(/x/gi, '').trim() || '';
 
     rows.push({
@@ -96,6 +98,7 @@ function parseCSV(content: string): TransactionRow[] {
       firstName: billingFirst?.trim() || '',
       lastName: billingLast?.trim() || '',
       email: email?.trim() || null,
+      transactionId: transactionId?.trim() || null,
     });
   }
 
@@ -110,7 +113,6 @@ function cleanTransactionName(firstName: string, lastName: string): { first: str
   let first = firstName.trim();
   let last = lastName.trim();
 
-  // Handle duplicated last name in first name (e.g., "Shimon Berger" / "berger")
   if (first.includes(' ') && last) {
     const parts = first.split(' ');
     const lastLower = last.toLowerCase();
@@ -119,7 +121,6 @@ function cleanTransactionName(firstName: string, lastName: string): { first: str
     }
   }
 
-  // Handle duplicated name in last (e.g., "Naftali Stefansky" / "Stefansky")
   if (last.includes(' ') && first) {
     const parts = last.split(' ');
     const firstLower = first.toLowerCase();
@@ -128,10 +129,7 @@ function cleanTransactionName(firstName: string, lastName: string): { first: str
     }
   }
 
-  // Handle ALL CAPS swapped names (e.g., "BRAUN" / "SHLOIMY" → "Shloimy" / "Braun")
-  // Heuristic: if both are all-caps, the first field is likely the last name
   if (first === first.toUpperCase() && last === last.toUpperCase() && first.length > 1 && last.length > 1) {
-    // Banquest puts LASTNAME in billing first, FIRSTNAME in billing last when all caps
     const temp = first;
     first = last;
     last = temp;
@@ -146,18 +144,26 @@ function cleanTransactionName(firstName: string, lastName: string): { first: str
 export async function parseTransactionReport(content: string): Promise<TransactionImportPreview> {
   const rows = parseCSV(content);
 
-  // Load all members for matching
   const allMembers = await prisma.member.findMany({
     select: { id: true, firstName: true, lastName: true, email: true },
   });
 
-  // Build lookup maps
   const emailMap = new Map<string, typeof allMembers[0]>();
   const nameMap = new Map<string, typeof allMembers[0]>();
   for (const m of allMembers) {
     if (m.email) emailMap.set(m.email.toLowerCase(), m);
     nameMap.set(`${m.firstName.toLowerCase()} ${m.lastName.toLowerCase()}`, m);
   }
+
+  // Check which externalIds already exist
+  const externalIds = rows.map(r => r.transactionId).filter(Boolean) as string[];
+  const existingDonations = externalIds.length > 0
+    ? await prisma.oneTimeDonation.findMany({
+        where: { externalId: { in: externalIds } },
+        select: { externalId: true },
+      })
+    : [];
+  const existingIdSet = new Set(existingDonations.map(d => d.externalId));
 
   const transactions: ParsedTransaction[] = [];
 
@@ -167,7 +173,9 @@ export async function parseTransactionReport(content: string): Promise<Transacti
     let matchedMemberName: string | null = null;
     let matchType: 'email' | 'name' | 'none' = 'none';
 
-    // Try email match first
+    // Check if already imported
+    const isDuplicate = row.transactionId ? existingIdSet.has(row.transactionId) : false;
+
     if (row.email) {
       const emailMatch = emailMap.get(row.email.toLowerCase());
       if (emailMatch) {
@@ -177,7 +185,6 @@ export async function parseTransactionReport(content: string): Promise<Transacti
       }
     }
 
-    // Fallback to name match
     if (!matchedMemberId) {
       const nameKey = `${first.toLowerCase()} ${last.toLowerCase()}`;
       const nameMatch = nameMap.get(nameKey);
@@ -197,9 +204,11 @@ export async function parseTransactionReport(content: string): Promise<Transacti
       firstName: first,
       lastName: last,
       email: row.email,
+      transactionId: row.transactionId,
       matchedMemberId,
       matchedMemberName,
       matchType,
+      isDuplicate,
     });
   }
 
@@ -207,40 +216,48 @@ export async function parseTransactionReport(content: string): Promise<Transacti
     transactions,
     summary: {
       total: transactions.length,
-      matched: transactions.filter(t => t.matchedMemberId).length,
-      unmatched: transactions.filter(t => !t.matchedMemberId).length,
-      totalAmount: transactions.reduce((s, t) => s + t.amount, 0),
+      matched: transactions.filter(t => t.matchedMemberId && !t.isDuplicate).length,
+      unmatched: transactions.filter(t => !t.matchedMemberId && !t.isDuplicate).length,
+      duplicates: transactions.filter(t => t.isDuplicate).length,
+      totalAmount: transactions.filter(t => !t.isDuplicate).reduce((s, t) => s + t.amount, 0),
     },
   };
 }
 
 export async function confirmTransactionImport(
   transactions: ParsedTransaction[]
-): Promise<{ imported: number; skipped: number; totalAmount: number }> {
+): Promise<{ imported: number; unmatched: number; skippedDuplicates: number; totalAmount: number }> {
   let imported = 0;
-  let skipped = 0;
+  let unmatched = 0;
+  let skippedDuplicates = 0;
   let totalAmount = 0;
 
   for (const tx of transactions) {
-    if (!tx.matchedMemberId) {
-      skipped++;
+    if (tx.isDuplicate) {
+      skippedDuplicates++;
       continue;
     }
 
     await prisma.oneTimeDonation.create({
       data: {
-        memberId: tx.matchedMemberId,
+        memberId: tx.matchedMemberId || null,
         amount: tx.amount,
         date: new Date(tx.date),
         source: 'CREDIT_CARD',
         description: tx.description || null,
         notes: tx.cardLast4 ? `Card ending ${tx.cardLast4}` : null,
+        donorName: !tx.matchedMemberId ? `${tx.firstName} ${tx.lastName}`.trim() : null,
+        externalId: tx.transactionId || null,
       },
     });
 
-    imported++;
+    if (tx.matchedMemberId) {
+      imported++;
+    } else {
+      unmatched++;
+    }
     totalAmount += tx.amount;
   }
 
-  return { imported, skipped, totalAmount };
+  return { imported, unmatched, skippedDuplicates, totalAmount };
 }
