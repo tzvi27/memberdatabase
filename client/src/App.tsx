@@ -6,6 +6,8 @@ import DashboardPage from './pages/DashboardPage';
 import MembersPage from './pages/MembersPage';
 import MemberProfilePage from './pages/MemberProfilePage';
 import BanquestImportPage from './pages/BanquestImportPage';
+import ImportPage from './pages/ImportPage';
+import UnmatchedPage from './pages/UnmatchedPage';
 import ZellePage from './pages/ZellePage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -30,7 +32,9 @@ function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/members" element={<MembersPage />} />
           <Route path="/members/:id" element={<MemberProfilePage />} />
-          <Route path="/import" element={<BanquestImportPage />} />
+          <Route path="/import" element={<ImportPage />} />
+          <Route path="/import/legacy" element={<BanquestImportPage />} />
+          <Route path="/unmatched" element={<UnmatchedPage />} />
           <Route path="/zelle" element={<ZellePage />} />
         </Route>
       </Routes>
