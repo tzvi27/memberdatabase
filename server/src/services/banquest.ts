@@ -354,17 +354,66 @@ export async function parseAndPreview(fileContent: string): Promise<ParsedMember
   return members;
 }
 
-function classifyCategory(description: string | null): 'MEMBERSHIP_RECURRING' | 'OTHER_RECURRING' {
-  if (!description) return 'MEMBERSHIP_RECURRING';
-  const desc = description.toLowerCase();
-  // If description explicitly mentions membership/dues, it's membership
-  const membershipKeywords = ['membership', 'dues', 'member'];
-  if (membershipKeywords.some(kw => desc.includes(kw))) return 'MEMBERSHIP_RECURRING';
-  // If description mentions something specific/other, it's other
-  const otherKeywords = ['donation', 'sponsor', 'kiddush', 'event', 'building', 'fund', 'charity', 'tzedak', 'dedic', 'pledge', 'yahrzeit', 'yizkor', 'aliy'];
-  if (otherKeywords.some(kw => desc.includes(kw))) return 'OTHER_RECURRING';
-  // Default: membership (most subscriptions are membership)
-  return 'MEMBERSHIP_RECURRING';
+async function classifyCategories(descriptions: string[]): Promise<Map<string, 'MEMBERSHIP_RECURRING' | 'OTHER_RECURRING'>> {
+  const result = new Map<string, 'MEMBERSHIP_RECURRING' | 'OTHER_RECURRING'>();
+  const unique = [...new Set(descriptions.filter(Boolean))];
+
+  if (unique.length === 0) return result;
+
+  // Simple rule: only "membership" in the description = membership. Everything else = other.
+  // Use AI to handle edge cases and ambiguous descriptions.
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    // Fallback: only exact "membership" keyword match
+    for (const desc of unique) {
+      result.set(desc, desc.toLowerCase().includes('membership') ? 'MEMBERSHIP_RECURRING' : 'OTHER_RECURRING');
+    }
+    return result;
+  }
+
+  try {
+    const client = new Anthropic({ apiKey });
+    const descList = unique.map((d, i) => `${i}: "${d}"`).join('\n');
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: `Classify each recurring subscription description as either "MEMBERSHIP" or "OTHER".
+
+Rules:
+- ONLY classify as MEMBERSHIP if the description clearly refers to synagogue/shul membership or membership dues
+- Everything else is OTHER: donations, sponsorships, kiddush, events, building fund, charity, pledges, yahrzeits, aliyah, dedications, etc.
+- If the description is empty or ambiguous, classify as OTHER
+
+Return ONLY a JSON array of strings, one per description, like: ["MEMBERSHIP","OTHER","OTHER",...]
+
+Descriptions:
+${descList}`
+      }],
+    });
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const classifications = JSON.parse(jsonMatch[0]) as string[];
+      if (classifications.length === unique.length) {
+        for (let i = 0; i < unique.length; i++) {
+          result.set(unique[i], classifications[i] === 'MEMBERSHIP' ? 'MEMBERSHIP_RECURRING' : 'OTHER_RECURRING');
+        }
+        return result;
+      }
+    }
+  } catch (err) {
+    console.error('AI category classification failed, using fallback:', err);
+  }
+
+  // Fallback
+  for (const desc of unique) {
+    result.set(desc, desc.toLowerCase().includes('membership') ? 'MEMBERSHIP_RECURRING' : 'OTHER_RECURRING');
+  }
+  return result;
 }
 
 export async function confirmImport(members: ParsedMember[]): Promise<{ created: number; updated: number; skipped: number; subscriptions: number }> {
@@ -372,6 +421,11 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
   let updated = 0;
   let skipped = 0;
   let subsCount = 0;
+
+  // Classify all subscription descriptions in one AI batch call
+  const allDescriptions = members.flatMap(m => m.subscriptions.map(s => s.description).filter(Boolean)) as string[];
+  const categoryMap = await classifyCategories(allDescriptions);
+  const getCategory = (desc: string | null) => (desc ? categoryMap.get(desc) : undefined) || 'OTHER_RECURRING';
 
   // Load merge/delete history from AuditLog to prevent re-adding merged/deleted members
   const mergeRecords = await prisma.auditLog.findMany({
@@ -439,7 +493,7 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
       if (target) {
         // Just update subscriptions for the target, skip creating/updating the member
         for (const sub of m.subscriptions) {
-          const category = classifyCategory(sub.description);
+          const category = getCategory(sub.description);
           await prisma.recurringDonation.upsert({
             where: { banquestId: sub.banquestId },
             create: {
@@ -540,7 +594,7 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
 
     // Upsert subscriptions by banquestId
     for (const sub of m.subscriptions) {
-      const category = classifyCategory(sub.description);
+      const category = getCategory(sub.description);
       await prisma.recurringDonation.upsert({
         where: { banquestId: sub.banquestId },
         create: {
