@@ -298,8 +298,8 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
   for (const m of members) {
     let memberId: string;
 
-    // Determine member status: INACTIVE if all subscriptions are disabled
-    const allInactive = m.subscriptions.length > 0 && m.subscriptions.every(s => s.status === 'inactive');
+    // Determine member status: INACTIVE if all subscriptions are disabled or all have payment failures
+    const allInactive = m.subscriptions.length > 0 && m.subscriptions.every(s => s.status === 'inactive' || s.failures > 0);
     const memberStatus = allInactive ? 'INACTIVE' : 'ACTIVE';
 
     if (m.existingMemberId) {
