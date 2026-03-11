@@ -36,7 +36,14 @@ router.get('/', async (req: Request, res: Response) => {
       prisma.member.count({ where }),
     ]);
 
-    res.json({ members, total, page: Number(page), limit: Number(limit) });
+    // Compute status dynamically from recurring donations
+    const membersWithStatus = members.map(m => {
+      const donations = m.recurringDonations;
+      const allInactive = donations.length > 0 && donations.every(d => d.status === 'inactive' || d.failures > 0);
+      return { ...m, status: allInactive ? 'INACTIVE' : 'ACTIVE' };
+    });
+
+    res.json({ members: membersWithStatus, total, page: Number(page), limit: Number(limit) });
   } catch (err) {
     console.error('Error listing members:', err);
     res.status(500).json({ message: 'Failed to list members' });
