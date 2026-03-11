@@ -163,6 +163,29 @@ router.post('/confirm', async (_req: Request, res: Response) => {
   }
 });
 
+// Delete all members, donations, audit logs, and match rules (full reset)
+router.delete('/clear-all', async (_req: Request, res: Response) => {
+  try {
+    const { prisma } = await import('../index');
+    await prisma.$transaction(async (tx) => {
+      await tx.receipt.deleteMany({});
+      await tx.billLineItem.deleteMany({});
+      await tx.bill.deleteMany({});
+      await tx.oneTimeDonation.deleteMany({});
+      await tx.recurringDonation.deleteMany({});
+      await tx.zellePayment.deleteMany({});
+      await tx.auditLog.deleteMany({});
+      await tx.matchRule.deleteMany({});
+      await tx.donor.deleteMany({});
+      await tx.member.deleteMany({});
+    });
+    res.json({ message: 'All members, donations, and import memory cleared.' });
+  } catch (err) {
+    console.error('Error clearing all data:', err);
+    res.status(500).json({ message: 'Failed to clear data' });
+  }
+});
+
 // Clear old credit card donations (admin utility)
 router.delete('/clear-credit-card', async (_req: Request, res: Response) => {
   try {

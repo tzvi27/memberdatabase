@@ -210,6 +210,20 @@ export async function parseAndPreview(fileContent: string): Promise<ParsedMember
     grouped.get(key)!.push(row);
   }
 
+  // Load merge/delete history for preview awareness
+  const mergeRecords = await prisma.auditLog.findMany({
+    where: { entityType: 'member', action: 'merge' },
+  });
+  const deleteRecords = await prisma.auditLog.findMany({
+    where: { entityType: 'member', action: 'delete' },
+  });
+  const deletedEmails = new Set(deleteRecords.filter(r => r.field === 'email' && r.oldValue).map(r => r.oldValue!.toLowerCase()));
+  const deletedNames = new Set(deleteRecords.filter(r => r.field === 'name' && r.oldValue).map(r => r.oldValue!.toLowerCase()));
+  const deletedBanquestIds = new Set(deleteRecords.filter(r => r.field === 'banquestId' && r.oldValue).map(r => r.oldValue!));
+  const mergedEmails = new Map(mergeRecords.filter(r => r.field === 'email' && r.oldValue && r.newValue).map(r => [r.oldValue!.toLowerCase(), r.newValue!]));
+  const mergedNames = new Map(mergeRecords.filter(r => r.field === 'name' && r.oldValue && r.newValue).map(r => [r.oldValue!.toLowerCase(), r.newValue!]));
+  const mergedBanquestIds = new Map(mergeRecords.filter(r => r.field === 'banquestId' && r.oldValue && r.newValue).map(r => [r.oldValue!, r.newValue!]));
+
   const members: ParsedMember[] = [];
 
   for (const [key, rowGroup] of grouped) {
@@ -218,7 +232,26 @@ export async function parseAndPreview(fileContent: string): Promise<ParsedMember
     const email = first.email || null;
     const issues: string[] = [];
 
-    // Check if member already exists
+    // Check if this member was previously deleted or merged
+    const emailLower = email?.toLowerCase() || '';
+    const nameKey = `${firstName}|${lastName}`.toLowerCase();
+    const bIds = rowGroup.map(r => r.custNum).filter(Boolean);
+
+    const wasDeleted = (emailLower && deletedEmails.has(emailLower))
+      || deletedNames.has(nameKey)
+      || bIds.some(id => deletedBanquestIds.has(id));
+    if (wasDeleted) {
+      issues.push('Previously deleted - will be skipped');
+    }
+
+    const mergeTargetId = (emailLower && mergedEmails.get(emailLower))
+      || mergedNames.get(nameKey)
+      || bIds.map(id => mergedBanquestIds.get(id)).find(Boolean);
+    if (mergeTargetId && !wasDeleted) {
+      issues.push('Previously merged - subscriptions will go to merged member');
+    }
+
+    // Check if member already exists - try email first, then name+banquestId fallback
     let existingMemberId: string | undefined;
     if (email) {
       const existing = await prisma.member.findUnique({ where: { email } });
@@ -227,7 +260,38 @@ export async function parseAndPreview(fileContent: string): Promise<ParsedMember
       }
     }
 
-    if (!email) {
+    // Fallback: match by banquestId (subscription already in DB → member exists)
+    if (!existingMemberId) {
+      const banquestIds = rowGroup.map(r => r.custNum).filter(Boolean);
+      if (banquestIds.length > 0) {
+        const existingSub = await prisma.recurringDonation.findFirst({
+          where: { banquestId: { in: banquestIds } },
+          select: { memberId: true },
+        });
+        if (existingSub) {
+          existingMemberId = existingSub.memberId;
+          if (!email) {
+            issues.push('Matched by subscription ID (no email)');
+          }
+        }
+      }
+    }
+
+    // Fallback: match by exact name (first+last) for no-email members
+    if (!existingMemberId && !email) {
+      const nameMatch = await prisma.member.findFirst({
+        where: {
+          firstName: { equals: firstName, mode: 'insensitive' },
+          lastName: { equals: lastName, mode: 'insensitive' },
+        },
+      });
+      if (nameMatch) {
+        existingMemberId = nameMatch.id;
+        issues.push('Matched by name (no email)');
+      }
+    }
+
+    if (!email && !existingMemberId) {
       issues.push('No email address - cannot match to existing member');
     }
 
@@ -290,13 +354,180 @@ export async function parseAndPreview(fileContent: string): Promise<ParsedMember
   return members;
 }
 
-export async function confirmImport(members: ParsedMember[]): Promise<{ created: number; updated: number; subscriptions: number }> {
+async function classifyCategories(descriptions: string[]): Promise<Map<string, 'MEMBERSHIP_RECURRING' | 'OTHER_RECURRING'>> {
+  const result = new Map<string, 'MEMBERSHIP_RECURRING' | 'OTHER_RECURRING'>();
+  const unique = [...new Set(descriptions.filter(Boolean))];
+
+  if (unique.length === 0) return result;
+
+  // Simple rule: only "membership" in the description = membership. Everything else = other.
+  // Use AI to handle edge cases and ambiguous descriptions.
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    // Fallback: only exact "membership" keyword match
+    for (const desc of unique) {
+      result.set(desc, desc.toLowerCase().includes('membership') ? 'MEMBERSHIP_RECURRING' : 'OTHER_RECURRING');
+    }
+    return result;
+  }
+
+  try {
+    const client = new Anthropic({ apiKey });
+    const descList = unique.map((d, i) => `${i}: "${d}"`).join('\n');
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: `Classify each recurring subscription description as either "MEMBERSHIP" or "OTHER".
+
+Rules:
+- ONLY classify as MEMBERSHIP if the description clearly refers to synagogue/shul membership or membership dues
+- Everything else is OTHER: donations, sponsorships, kiddush, events, building fund, charity, pledges, yahrzeits, aliyah, dedications, etc.
+- If the description is empty or ambiguous, classify as OTHER
+
+Return ONLY a JSON array of strings, one per description, like: ["MEMBERSHIP","OTHER","OTHER",...]
+
+Descriptions:
+${descList}`
+      }],
+    });
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const classifications = JSON.parse(jsonMatch[0]) as string[];
+      if (classifications.length === unique.length) {
+        for (let i = 0; i < unique.length; i++) {
+          result.set(unique[i], classifications[i] === 'MEMBERSHIP' ? 'MEMBERSHIP_RECURRING' : 'OTHER_RECURRING');
+        }
+        return result;
+      }
+    }
+  } catch (err) {
+    console.error('AI category classification failed, using fallback:', err);
+  }
+
+  // Fallback
+  for (const desc of unique) {
+    result.set(desc, desc.toLowerCase().includes('membership') ? 'MEMBERSHIP_RECURRING' : 'OTHER_RECURRING');
+  }
+  return result;
+}
+
+export async function confirmImport(members: ParsedMember[]): Promise<{ created: number; updated: number; skipped: number; subscriptions: number }> {
   let created = 0;
   let updated = 0;
+  let skipped = 0;
   let subsCount = 0;
+
+  // Classify all subscription descriptions in one AI batch call
+  const allDescriptions = members.flatMap(m => m.subscriptions.map(s => s.description).filter(Boolean)) as string[];
+  const categoryMap = await classifyCategories(allDescriptions);
+  const getCategory = (desc: string | null) => (desc ? categoryMap.get(desc) : undefined) || 'OTHER_RECURRING';
+
+  // Load merge/delete history from AuditLog to prevent re-adding merged/deleted members
+  const mergeRecords = await prisma.auditLog.findMany({
+    where: { entityType: 'member', action: 'merge' },
+  });
+  const deleteRecords = await prisma.auditLog.findMany({
+    where: { entityType: 'member', action: 'delete' },
+  });
+
+  // Build maps: deleted emails/names to skip, merged emails/names/banquestIds to redirect
+  const deletedEmails = new Set<string>();
+  const deletedNames = new Set<string>(); // "firstName|lastName" lowercased
+  const deletedBanquestIds = new Set<string>();
+  const mergedEmailToTarget = new Map<string, string>();
+  const mergedNameToTarget = new Map<string, string>();
+  const mergedBanquestToTarget = new Map<string, string>();
+
+  for (const rec of deleteRecords) {
+    if (rec.field === 'email' && rec.oldValue) {
+      deletedEmails.add(rec.oldValue.toLowerCase());
+    }
+    if (rec.field === 'name' && rec.oldValue) {
+      deletedNames.add(rec.oldValue.toLowerCase());
+    }
+    if (rec.field === 'banquestId' && rec.oldValue) {
+      deletedBanquestIds.add(rec.oldValue);
+    }
+  }
+
+  for (const rec of mergeRecords) {
+    if (rec.field === 'email' && rec.oldValue && rec.newValue) {
+      mergedEmailToTarget.set(rec.oldValue.toLowerCase(), rec.newValue);
+    }
+    if (rec.field === 'name' && rec.oldValue && rec.newValue) {
+      mergedNameToTarget.set(rec.oldValue.toLowerCase(), rec.newValue);
+    }
+    if (rec.field === 'banquestId' && rec.oldValue && rec.newValue) {
+      mergedBanquestToTarget.set(rec.oldValue, rec.newValue);
+    }
+  }
 
   for (const m of members) {
     let memberId: string;
+    const emailLower = m.email?.toLowerCase() || '';
+    const nameKey = `${m.firstName}|${m.lastName}`.toLowerCase();
+    const banquestIds = m.subscriptions.map(s => s.banquestId).filter(Boolean);
+
+    // Check if this member was hard-deleted (by email, name, or banquestId)
+    const isDeleted = (emailLower && deletedEmails.has(emailLower))
+      || deletedNames.has(nameKey)
+      || banquestIds.some(id => deletedBanquestIds.has(id));
+    if (isDeleted) {
+      skipped++;
+      continue;
+    }
+
+    // Check if this member was merged (by email, name, or banquestId) → redirect to primary
+    const mergeTarget = (emailLower && mergedEmailToTarget.get(emailLower))
+      || mergedNameToTarget.get(nameKey)
+      || banquestIds.map(id => mergedBanquestToTarget.get(id)).find(Boolean);
+    if (mergeTarget) {
+      const targetId = mergeTarget;
+      // Verify target still exists
+      const target = await prisma.member.findUnique({ where: { id: targetId } });
+      if (target) {
+        // Just update subscriptions for the target, skip creating/updating the member
+        for (const sub of m.subscriptions) {
+          const category = getCategory(sub.description);
+          await prisma.recurringDonation.upsert({
+            where: { banquestId: sub.banquestId },
+            create: {
+              memberId: targetId,
+              banquestId: sub.banquestId,
+              amount: sub.amount,
+              frequency: sub.frequency,
+              status: sub.status,
+              category,
+              startDate: new Date(sub.startDate),
+              nextDueDate: sub.nextDueDate ? new Date(sub.nextDueDate) : null,
+              description: sub.description,
+              numLeft: sub.numLeft,
+              failures: sub.failures,
+              cardLast4: sub.cardLast4,
+            },
+            update: {
+              amount: sub.amount,
+              frequency: sub.frequency,
+              status: sub.status,
+              category,
+              nextDueDate: sub.nextDueDate ? new Date(sub.nextDueDate) : null,
+              description: sub.description,
+              numLeft: sub.numLeft,
+              failures: sub.failures,
+              cardLast4: sub.cardLast4,
+            },
+          });
+          subsCount++;
+        }
+        skipped++;
+        continue;
+      }
+    }
 
     // Determine member status: INACTIVE if all subscriptions are disabled or all have payment failures
     const allInactive = m.subscriptions.length > 0 && m.subscriptions.every(s => s.status === 'inactive' || s.failures > 0);
@@ -363,6 +594,7 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
 
     // Upsert subscriptions by banquestId
     for (const sub of m.subscriptions) {
+      const category = getCategory(sub.description);
       await prisma.recurringDonation.upsert({
         where: { banquestId: sub.banquestId },
         create: {
@@ -371,6 +603,7 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
           amount: sub.amount,
           frequency: sub.frequency,
           status: sub.status,
+          category,
           startDate: new Date(sub.startDate),
           nextDueDate: sub.nextDueDate ? new Date(sub.nextDueDate) : null,
           description: sub.description,
@@ -382,6 +615,7 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
           amount: sub.amount,
           frequency: sub.frequency,
           status: sub.status,
+          category,
           nextDueDate: sub.nextDueDate ? new Date(sub.nextDueDate) : null,
           description: sub.description,
           numLeft: sub.numLeft,
@@ -393,5 +627,5 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
     }
   }
 
-  return { created, updated, subscriptions: subsCount };
+  return { created, updated, skipped, subscriptions: subsCount };
 }

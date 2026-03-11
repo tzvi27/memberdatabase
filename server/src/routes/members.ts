@@ -161,12 +161,44 @@ router.delete('/:id', async (req: Request, res: Response) => {
 router.delete('/:id/permanent', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    const member = await prisma.member.findUnique({ where: { id } });
+    const member = await prisma.member.findUnique({
+      where: { id },
+      include: { recurringDonations: { select: { banquestId: true } } },
+    });
     if (!member) {
       res.status(404).json({ message: 'Member not found' });
       return;
     }
-    await prisma.member.delete({ where: { id } });
+
+    // Log deletion so future imports skip this member
+    const auditEntries: Array<{ entityType: string; entityId: string; action: string; field: string; oldValue: string }> = [];
+    if (member.email) {
+      auditEntries.push({
+        entityType: 'member', entityId: id, action: 'delete',
+        field: 'email', oldValue: member.email,
+      });
+    }
+    // Also log name for name-based matching
+    auditEntries.push({
+      entityType: 'member', entityId: id, action: 'delete',
+      field: 'name', oldValue: `${member.firstName}|${member.lastName}`,
+    });
+    for (const rd of member.recurringDonations) {
+      if (rd.banquestId) {
+        auditEntries.push({
+          entityType: 'member', entityId: id, action: 'delete',
+          field: 'banquestId', oldValue: rd.banquestId,
+        });
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (auditEntries.length > 0) {
+        await tx.auditLog.createMany({ data: auditEntries });
+      }
+      await tx.member.delete({ where: { id } });
+    });
+
     res.json({ message: 'Member permanently deleted' });
   } catch (err) {
     console.error('Error deleting member:', err);
@@ -187,7 +219,10 @@ router.post('/:primaryId/merge/:secondaryId', async (req: Request, res: Response
 
     const [primary, secondary] = await Promise.all([
       prisma.member.findUnique({ where: { id: primaryId } }),
-      prisma.member.findUnique({ where: { id: secondaryId } }),
+      prisma.member.findUnique({
+        where: { id: secondaryId },
+        include: { recurringDonations: { select: { banquestId: true } } },
+      }),
     ]);
 
     if (!primary || !secondary) {
@@ -196,6 +231,31 @@ router.post('/:primaryId/merge/:secondaryId', async (req: Request, res: Response
     }
 
     await prisma.$transaction(async (tx) => {
+      // Log merge so future imports redirect secondary's data to primary
+      const auditEntries: Array<{ entityType: string; entityId: string; action: string; field: string; oldValue: string; newValue: string }> = [];
+      if (secondary.email) {
+        auditEntries.push({
+          entityType: 'member', entityId: secondaryId, action: 'merge',
+          field: 'email', oldValue: secondary.email, newValue: primaryId,
+        });
+      }
+      // Log name for name-based matching
+      auditEntries.push({
+        entityType: 'member', entityId: secondaryId, action: 'merge',
+        field: 'name', oldValue: `${secondary.firstName}|${secondary.lastName}`, newValue: primaryId,
+      });
+      for (const rd of secondary.recurringDonations) {
+        if (rd.banquestId) {
+          auditEntries.push({
+            entityType: 'member', entityId: secondaryId, action: 'merge',
+            field: 'banquestId', oldValue: rd.banquestId, newValue: primaryId,
+          });
+        }
+      }
+      if (auditEntries.length > 0) {
+        await tx.auditLog.createMany({ data: auditEntries });
+      }
+
       // Reassign all transactions from secondary to primary
       await tx.recurringDonation.updateMany({
         where: { memberId: secondaryId },
@@ -222,8 +282,8 @@ router.post('/:primaryId/merge/:secondaryId', async (req: Request, res: Response
 
       const updateData: Record<string, any> = {};
       for (const field of fillableFields) {
-        if (!primary[field] && secondary[field]) {
-          updateData[field] = secondary[field];
+        if (!primary[field] && (secondary as any)[field]) {
+          updateData[field] = (secondary as any)[field];
         }
       }
 

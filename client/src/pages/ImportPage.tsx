@@ -187,6 +187,8 @@ export default function ImportPage() {
 function UploadStep({ loading, onUpload }: { loading: boolean; onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void }) {
   const [clearing, setClearing] = useState(false);
   const [clearResult, setClearResult] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
+  const [clearAllResult, setClearAllResult] = useState<string | null>(null);
 
   async function handleClearCreditCard() {
     if (!confirm('Delete ALL credit card donations? This cannot be undone. Use this before re-importing a new fullreport.')) return;
@@ -198,6 +200,20 @@ function UploadStep({ loading, onUpload }: { loading: boolean; onUpload: (e: Rea
       setClearResult(`Error: ${err.message}`);
     } finally {
       setClearing(false);
+    }
+  }
+
+  async function handleClearAll() {
+    if (!confirm('DELETE ALL members, donations, audit logs, and import memory? This is a FULL RESET and cannot be undone.')) return;
+    if (!confirm('Are you absolutely sure? This will wipe everything.')) return;
+    setClearingAll(true);
+    try {
+      const res = await api.delete<{ message: string }>('/import/clear-all');
+      setClearAllResult(res.message);
+    } catch (err: any) {
+      setClearAllResult(`Error: ${err.message}`);
+    } finally {
+      setClearingAll(false);
     }
   }
 
@@ -236,6 +252,24 @@ function UploadStep({ loading, onUpload }: { loading: boolean; onUpload: (e: Rea
           {clearing ? 'Clearing...' : 'Clear All Credit Card Donations'}
         </button>
       </div>
+
+      {/* Admin: Delete all members & memory (full reset) */}
+      <div className="mt-4 border border-red-300 bg-red-50/30 rounded-lg p-4">
+        <p className="text-sm font-medium text-red-800 mb-1">Delete All Members & Memory</p>
+        <p className="text-xs text-muted-foreground mb-3">
+          Full reset: deletes all members, donors, donations, receipts, audit logs, and match rules. Use this to start fresh from a clean import.
+        </p>
+        {clearAllResult && (
+          <div className={`text-sm px-3 py-2 rounded-md mb-3 ${clearAllResult.startsWith('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+            {clearAllResult}
+          </div>
+        )}
+        <button onClick={handleClearAll} disabled={clearingAll}
+          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 disabled:opacity-50">
+          {clearingAll ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+          {clearingAll ? 'Deleting Everything...' : 'Delete All Members & Memory'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -249,7 +283,8 @@ function DoneStep({ type, result, onReset }: { type: ImportType; result: any; on
       {type === 'banquest-members' ? (
         <p className="text-green-700">
           Created {result.created} new members, updated {result.updated} existing members,
-          and imported {result.subscriptions} subscriptions.
+          {result.skipped > 0 && ` skipped ${result.skipped} (previously deleted/merged),`}
+          {' '}and imported {result.subscriptions} subscriptions.
         </p>
       ) : (
         <p className="text-green-700">
