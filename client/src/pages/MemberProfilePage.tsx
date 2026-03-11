@@ -363,15 +363,16 @@ function RecurringTab({ items, onUpdated }: { items: RecurringDonation[]; onUpda
 
   if (!items.length) return <p className="text-sm text-muted-foreground">No recurring donations.</p>;
   return (
-    <table className="w-full text-sm">
+    <div className="overflow-x-auto">
+    <table className="w-full text-sm table-fixed">
       <thead><tr className="text-left text-muted-foreground">
-        <th className="pb-2">Description</th><th className="pb-2">Amount</th><th className="pb-2">Frequency</th>
-        <th className="pb-2">Card</th><th className="pb-2">Status</th><th className="pb-2">Next Due</th><th className="pb-2">Failures</th>
+        <th className="pb-2 w-[30%]">Description</th><th className="pb-2 w-[10%]">Amount</th><th className="pb-2 w-[10%]">Freq</th>
+        <th className="pb-2 w-[8%]">Card</th><th className="pb-2 w-[10%]">Status</th><th className="pb-2 w-[12%]">Next Due</th><th className="pb-2 w-[8%]">Duration</th><th className="pb-2 w-[7%]">Fails</th>
       </tr></thead>
       <tbody>
         {items.map(d => (
           <tr key={d.id} className="border-t border-border">
-            <td className="py-2">
+            <td className="py-2 pr-2 truncate" title={d.description || ''}>
               {editingId === d.id ? (
                 <div className="flex items-center gap-1">
                   <input
@@ -386,28 +387,30 @@ function RecurringTab({ items, onUpdated }: { items: RecurringDonation[]; onUpda
                 </div>
               ) : (
                 <span
-                  className="cursor-pointer hover:text-accent"
+                  className="cursor-pointer hover:text-accent truncate block"
                   onClick={() => { setEditingId(d.id); setEditValue(d.description || ''); }}
-                  title="Click to edit"
+                  title={d.description || 'Click to edit'}
                 >
                   {d.description || '-'}
                 </span>
               )}
             </td>
-            <td className="py-2">${Number(d.amount).toFixed(2)}</td>
-            <td className="py-2 capitalize">{d.frequency.toLowerCase()}</td>
-            <td className="py-2 text-muted-foreground">{d.cardLast4 ? `••${d.cardLast4}` : '-'}</td>
-            <td className="py-2">
+            <td className="py-2 pr-2">${Number(d.amount).toFixed(2)}</td>
+            <td className="py-2 pr-2 capitalize">{d.frequency.toLowerCase()}</td>
+            <td className="py-2 pr-2 text-muted-foreground">{d.cardLast4 ? `••${d.cardLast4}` : '-'}</td>
+            <td className="py-2 pr-2">
               <span className={`text-xs px-2 py-0.5 rounded-full ${
                 d.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
               }`}>{d.status}</span>
             </td>
-            <td className="py-2">{d.nextDueDate ? new Date(d.nextDueDate).toLocaleDateString() : '-'}</td>
+            <td className="py-2 pr-2">{d.nextDueDate ? new Date(d.nextDueDate).toLocaleDateString() : '-'}</td>
+            <td className="py-2 pr-2 text-center">{d.numLeft ? d.numLeft : '*'}</td>
             <td className="py-2">{d.failures > 0 ? <span className="text-red-600 font-medium">{d.failures}</span> : '0'}</td>
           </tr>
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -475,15 +478,15 @@ function DonationsTab({ items, memberId, onAdded }: { items: OneTimeDonation[]; 
       {!items.length && !showForm ? <p className="text-sm text-muted-foreground">No one-time donations yet.</p> : items.length > 0 && (
         <table className="w-full text-sm">
           <thead><tr className="text-left text-muted-foreground">
-            <th className="pb-2">Date</th><th className="pb-2">Amount</th><th className="pb-2">Source</th><th className="pb-2">Description</th><th className="pb-2"></th>
+            <th className="pb-2 pr-4">Date</th><th className="pb-2 pr-4">Amount</th><th className="pb-2 pr-4">Source</th><th className="pb-2 pr-4">Description</th><th className="pb-2"></th>
           </tr></thead>
           <tbody>
             {items.map(d => (
               <tr key={d.id} className="border-t border-border">
-                <td className="py-2">{new Date(d.date).toLocaleDateString()}</td>
-                <td className="py-2">${Number(d.amount).toFixed(2)}</td>
-                <td className="py-2 capitalize">{d.source.toLowerCase().replace('_', ' ')}</td>
-                <td className="py-2">{d.description || '-'}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">{new Date(d.date).toLocaleDateString()}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">${Number(d.amount).toFixed(2)}</td>
+                <td className="py-2 pr-4 capitalize whitespace-nowrap">{d.source.toLowerCase().replace('_', ' ')}</td>
+                <td className="py-2 pr-4">{d.description || '-'}</td>
                 <td className="py-2"><DownloadPDF url={`/api/members/${memberId}/receipt/${d.id}`} label="Receipt" /></td>
               </tr>
             ))}
