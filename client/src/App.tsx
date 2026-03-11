@@ -9,6 +9,8 @@ import BanquestImportPage from './pages/BanquestImportPage';
 import ImportPage from './pages/ImportPage';
 import UnmatchedPage from './pages/UnmatchedPage';
 import ZellePage from './pages/ZellePage';
+import DonorsPage from './pages/DonorsPage';
+import DonorProfilePage from './pages/DonorProfilePage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) {
@@ -34,6 +36,8 @@ function App() {
           <Route path="/members/:id" element={<MemberProfilePage />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/import/legacy" element={<BanquestImportPage />} />
+          <Route path="/donors" element={<DonorsPage />} />
+          <Route path="/donors/:id" element={<DonorProfilePage />} />
           <Route path="/unmatched" element={<UnmatchedPage />} />
           <Route path="/zelle" element={<ZellePage />} />
         </Route>

@@ -303,20 +303,40 @@ export async function confirmImport(members: ParsedMember[]): Promise<{ created:
     const memberStatus = allInactive ? 'INACTIVE' : 'ACTIVE';
 
     if (m.existingMemberId) {
-      // Update existing member
+      // Update existing member - respect manually edited fields
+      const existing = await prisma.member.findUnique({ where: { id: m.existingMemberId } });
+      const updateData: Record<string, any> = {
+        firstName: m.firstName,
+        lastName: m.lastName,
+        phone: m.phone,
+        street: m.street,
+        city: m.city,
+        state: m.state,
+        zip: m.zip,
+        country: m.country,
+        status: memberStatus,
+      };
+
+      if (existing?.manuallyEdited) {
+        // Check which fields were manually edited and skip them
+        const editedFields = await prisma.auditLog.findMany({
+          where: { entityType: 'member', entityId: m.existingMemberId, action: 'field_edit' },
+          select: { field: true },
+        });
+        const editedSet = new Set(editedFields.map(e => e.field).filter(Boolean));
+        for (const field of editedSet) {
+          if (field && field in updateData) delete updateData[field];
+        }
+      }
+
+      // Respect manually set status
+      if (existing?.statusManuallySet) {
+        delete updateData.status;
+      }
+
       await prisma.member.update({
         where: { id: m.existingMemberId },
-        data: {
-          firstName: m.firstName,
-          lastName: m.lastName,
-          phone: m.phone,
-          street: m.street,
-          city: m.city,
-          state: m.state,
-          zip: m.zip,
-          country: m.country,
-          status: memberStatus,
-        },
+        data: updateData,
       });
       memberId = m.existingMemberId;
       updated++;

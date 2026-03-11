@@ -1,10 +1,11 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Upload, Inbox, CreditCard, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Upload, Inbox, CreditCard, Heart, LogOut } from 'lucide-react';
 import { clearToken } from '../lib/auth';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/members', icon: Users, label: 'Members' },
+  { to: '/donors', icon: Heart, label: 'Donors' },
   { to: '/import', icon: Upload, label: 'Import' },
   { to: '/unmatched', icon: Inbox, label: 'Misc Donations' },
   { to: '/zelle', icon: CreditCard, label: 'Zelle' },

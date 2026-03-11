@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../index';
+import { logAudit } from '../services/auditLog';
 
 const router = Router();
 
@@ -36,8 +37,9 @@ router.get('/', async (req: Request, res: Response) => {
       prisma.member.count({ where }),
     ]);
 
-    // Compute status dynamically from recurring donations
+    // Compute status dynamically from recurring donations (unless manually overridden)
     const membersWithStatus = members.map(m => {
+      if (m.statusManuallySet) return m;
       const donations = m.recurringDonations;
       const allInactive = donations.length > 0 && donations.every(d => d.status === 'inactive' || d.failures > 0);
       return { ...m, status: allInactive ? 'INACTIVE' : 'ACTIVE' };
@@ -271,6 +273,93 @@ router.patch('/recurring-donations/:donationId', async (req: Request, res: Respo
   } catch (err) {
     console.error('Error updating recurring donation:', err);
     res.status(500).json({ message: 'Failed to update recurring donation' });
+  }
+});
+
+// Toggle member status (Active/Inactive) - manual override
+router.patch('/:id/status', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const { status } = req.body;
+
+    if (!['ACTIVE', 'INACTIVE'].includes(status)) {
+      res.status(400).json({ message: 'Status must be ACTIVE or INACTIVE' });
+      return;
+    }
+
+    const member = await prisma.member.findUnique({ where: { id } });
+    if (!member) {
+      res.status(404).json({ message: 'Member not found' });
+      return;
+    }
+
+    const oldStatus = member.status;
+    const updated = await prisma.member.update({
+      where: { id },
+      data: { status, statusManuallySet: true, manuallyEdited: true },
+    });
+
+    await logAudit({
+      entityType: 'member',
+      entityId: id,
+      action: 'status_change',
+      field: 'status',
+      oldValue: oldStatus,
+      newValue: status,
+      details: 'Manual status toggle',
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error('Error toggling status:', err);
+    res.status(500).json({ message: 'Failed to toggle status' });
+  }
+});
+
+// Toggle membership status (Member/Non-member)
+router.patch('/:id/membership', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const { membershipStatus } = req.body;
+
+    if (!['MEMBER', 'NON_MEMBER'].includes(membershipStatus)) {
+      res.status(400).json({ message: 'Must be MEMBER or NON_MEMBER' });
+      return;
+    }
+
+    const updated = await prisma.member.update({
+      where: { id },
+      data: { membershipStatus },
+    });
+
+    await logAudit({
+      entityType: 'member',
+      entityId: id,
+      action: 'field_edit',
+      field: 'membershipStatus',
+      newValue: membershipStatus,
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error('Error updating membership:', err);
+    res.status(500).json({ message: 'Failed to update membership status' });
+  }
+});
+
+// Get audit log for a member
+router.get('/:id/audit-log', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const logs = await prisma.auditLog.findMany({
+      where: { entityId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    res.json(logs);
+  } catch (err) {
+    console.error('Error fetching audit log:', err);
+    res.status(500).json({ message: 'Failed to fetch audit log' });
   }
 });
 

@@ -13,6 +13,7 @@ import billRoutes from './routes/bills';
 import zelleRoutes from './routes/zelle';
 import documentRoutes from './routes/documents';
 import dashboardRoutes from './routes/dashboard';
+import donorRoutes from './routes/donors';
 import { authMiddleware } from './middleware/auth';
 
 export const prisma = new PrismaClient();
@@ -42,6 +43,7 @@ app.use('/api/zelle', zelleRoutes);
 app.use('/api/members', documentRoutes);
 app.use('/api', documentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/donors', donorRoutes);
 
 // Serve client build in production
 if (process.env.NODE_ENV === 'production') {
