@@ -163,4 +163,18 @@ router.post('/confirm', async (_req: Request, res: Response) => {
   }
 });
 
+// Clear old credit card donations (admin utility)
+router.delete('/clear-credit-card', async (_req: Request, res: Response) => {
+  try {
+    const { prisma } = await import('../index');
+    const result = await prisma.oneTimeDonation.deleteMany({
+      where: { source: 'CREDIT_CARD' },
+    });
+    res.json({ deleted: result.count });
+  } catch (err) {
+    console.error('Error clearing credit card donations:', err);
+    res.status(500).json({ message: 'Failed to clear donations' });
+  }
+});
+
 export default router;

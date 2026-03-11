@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Upload, CheckCircle, AlertTriangle, Users, RefreshCw, DollarSign, UserCheck, UserX, FileText } from 'lucide-react';
+import { Upload, CheckCircle, AlertTriangle, Users, RefreshCw, DollarSign, UserCheck, UserX, FileText, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 
 type ImportType = 'banquest-members' | 'banquest-transactions' | 'donation-details';
@@ -185,21 +185,57 @@ export default function ImportPage() {
 
 // --- Upload Step ---
 function UploadStep({ loading, onUpload }: { loading: boolean; onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void }) {
+  const [clearing, setClearing] = useState(false);
+  const [clearResult, setClearResult] = useState<string | null>(null);
+
+  async function handleClearCreditCard() {
+    if (!confirm('Delete ALL credit card donations? This cannot be undone. Use this before re-importing a new fullreport.')) return;
+    setClearing(true);
+    try {
+      const res = await api.delete<{ deleted: number }>('/import/clear-credit-card');
+      setClearResult(`Deleted ${res.deleted} credit card donation(s).`);
+    } catch (err: any) {
+      setClearResult(`Error: ${err.message}`);
+    } finally {
+      setClearing(false);
+    }
+  }
+
   return (
-    <div className="bg-background border-2 border-dashed border-border rounded-lg p-12 text-center">
-      <Upload size={48} className="mx-auto text-muted-foreground mb-4" />
-      <p className="text-lg font-medium mb-2">Upload Import File</p>
-      <p className="text-sm text-muted-foreground mb-1">
-        The system will automatically detect the file type and process it accordingly.
-      </p>
-      <p className="text-xs text-muted-foreground mb-6">
-        Supported: Banquest export (.txt/.tsv), Transaction report (.csv), Donation details (.xlsx)
-      </p>
-      <label className={`inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 rounded-md cursor-pointer hover:opacity-90 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
-        {loading ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
-        {loading ? 'Processing...' : 'Choose File'}
-        <input type="file" accept=".txt,.csv,.tsv,.xlsx,.xls" onChange={onUpload} className="hidden" disabled={loading} />
-      </label>
+    <div>
+      <div className="bg-background border-2 border-dashed border-border rounded-lg p-12 text-center">
+        <Upload size={48} className="mx-auto text-muted-foreground mb-4" />
+        <p className="text-lg font-medium mb-2">Upload Import File</p>
+        <p className="text-sm text-muted-foreground mb-1">
+          The system will automatically detect the file type and process it accordingly.
+        </p>
+        <p className="text-xs text-muted-foreground mb-6">
+          Supported: Banquest export (.txt/.tsv), Transaction report (.csv), Donation details (.xlsx)
+        </p>
+        <label className={`inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 rounded-md cursor-pointer hover:opacity-90 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+          {loading ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
+          {loading ? 'Processing...' : 'Choose File'}
+          <input type="file" accept=".txt,.csv,.tsv,.xlsx,.xls" onChange={onUpload} className="hidden" disabled={loading} />
+        </label>
+      </div>
+
+      {/* Admin: Clear old credit card donations */}
+      <div className="mt-6 border border-border rounded-lg p-4">
+        <p className="text-sm font-medium mb-1">Clear Old Credit Card Donations</p>
+        <p className="text-xs text-muted-foreground mb-3">
+          Use this before re-importing a new transaction report to avoid duplicates from old imports that didn't have Transaction IDs.
+        </p>
+        {clearResult && (
+          <div className={`text-sm px-3 py-2 rounded-md mb-3 ${clearResult.startsWith('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+            {clearResult}
+          </div>
+        )}
+        <button onClick={handleClearCreditCard} disabled={clearing}
+          className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-700 rounded-md text-sm hover:bg-red-50 disabled:opacity-50">
+          {clearing ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+          {clearing ? 'Clearing...' : 'Clear All Credit Card Donations'}
+        </button>
+      </div>
     </div>
   );
 }
