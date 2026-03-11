@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { prisma } from '../index';
-import { generateInvoicePDF, generateDonationReceiptPDF, generateAnnualReceiptPDF } from '../services/pdf';
+import { generateInvoicePDF } from '../services/pdf';
+import { generateDonationReceiptHtml, generateAnnualReceiptHtml } from '../services/receiptHtml';
 
 const router = Router();
 const logoUpload = multer({ dest: path.join(__dirname, '../../uploads') });
@@ -42,7 +43,7 @@ router.get('/:memberId/invoice/:billId', async (req: Request, res: Response) => 
   }
 });
 
-// Generate donation receipt PDF
+// Generate donation receipt (HTML for print-to-PDF)
 router.get('/:memberId/receipt/:donationId', async (req: Request, res: Response) => {
   try {
     const memberId = req.params.memberId as string;
@@ -52,17 +53,21 @@ router.get('/:memberId/receipt/:donationId', async (req: Request, res: Response)
 
     // Try one-time donation first, then Zelle payment
     let donation = await prisma.oneTimeDonation.findUnique({ where: { id: donationId } });
-    let source: string | undefined;
+    let source = '';
     let transactionNumber: string | null = null;
+    let donationType = 'one_time';
+    let description: string | null = null;
 
     if (donation && donation.memberId === memberId) {
       source = donation.source;
+      description = donation.description;
     } else {
       const zelle = await prisma.zellePayment.findUnique({ where: { id: donationId } });
       if (zelle && zelle.memberId === memberId) {
-        donation = { ...zelle, source: 'ZELLE', description: null, notes: null } as any;
-        source = 'Zelle';
+        donation = zelle as any;
+        source = 'ZELLE';
         transactionNumber = zelle.transactionNumber;
+        donationType = 'zelle';
       }
     }
 
@@ -71,27 +76,34 @@ router.get('/:memberId/receipt/:donationId', async (req: Request, res: Response)
       return;
     }
 
-    const doc = generateDonationReceiptPDF({
-      member,
+    // Get or create receipt number
+    const receipt = await prisma.receipt.upsert({
+      where: { donationId_donationType: { donationId, donationType } },
+      create: { memberId, donationId, donationType },
+      update: {},
+    });
+
+    const html = generateDonationReceiptHtml({
+      receiptNumber: receipt.id,
+      memberName: `${member.firstName} ${member.lastName}`,
       donation: {
         amount: Number(donation.amount),
         date: donation.date,
         source,
         transactionNumber,
-        description: (donation as any).description,
+        description,
       },
     });
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="receipt-${donationId.slice(0, 8)}.pdf"`);
-    doc.pipe(res);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
   } catch (err) {
     console.error('Error generating receipt:', err);
     res.status(500).json({ message: 'Failed to generate receipt' });
   }
 });
 
-// Generate annual summary receipt PDF
+// Generate annual summary receipt (HTML for print-to-PDF)
 router.get('/:memberId/annual-receipt', async (req: Request, res: Response) => {
   try {
     const memberId = req.params.memberId as string;
@@ -110,7 +122,7 @@ router.get('/:memberId/annual-receipt', async (req: Request, res: Response) => {
     }
 
     // Gather all donations in range
-    const [oneTime, zelle, recurring] = await Promise.all([
+    const [oneTime, zelle] = await Promise.all([
       prisma.oneTimeDonation.findMany({
         where: { memberId, date: { gte: startDate, lte: endDate } },
         orderBy: { date: 'asc' },
@@ -119,29 +131,34 @@ router.get('/:memberId/annual-receipt', async (req: Request, res: Response) => {
         where: { memberId, matched: true, date: { gte: startDate, lte: endDate } },
         orderBy: { date: 'asc' },
       }),
-      prisma.recurringDonation.findMany({
-        where: { memberId, status: 'active' },
-      }),
     ]);
 
     const donations = [
       ...oneTime.map(d => ({ date: d.date, amount: Number(d.amount), source: d.source as string, description: d.description })),
-      ...zelle.map(z => ({ date: z.date, amount: Number(z.amount), source: 'Zelle' as string, description: `Zelle from ${z.senderName}` })),
+      ...zelle.map(z => ({ date: z.date, amount: Number(z.amount), source: 'ZELLE' as string, description: `Zelle from ${z.senderName}` })),
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     const grandTotal = donations.reduce((s, d) => s + Number(d.amount), 0);
 
-    const doc = generateAnnualReceiptPDF({
-      member,
+    // Create annual receipt record (keyed by memberId + date range)
+    const annualKey = `annual-${memberId}-${req.query.start}-${req.query.end}`;
+    const receipt = await prisma.receipt.upsert({
+      where: { donationId_donationType: { donationId: annualKey, donationType: 'annual' } },
+      create: { memberId, donationId: annualKey, donationType: 'annual' },
+      update: {},
+    });
+
+    const html = generateAnnualReceiptHtml({
+      receiptNumber: receipt.id,
+      memberName: `${member.firstName} ${member.lastName}`,
       startDate,
       endDate,
       donations,
       grandTotal,
     });
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="annual-receipt-${member.lastName}-${startDate.getFullYear()}.pdf"`);
-    doc.pipe(res);
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
   } catch (err) {
     console.error('Error generating annual receipt:', err);
     res.status(500).json({ message: 'Failed to generate annual receipt' });

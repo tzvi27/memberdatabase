@@ -487,7 +487,7 @@ function DonationsTab({ items, memberId, onAdded }: { items: OneTimeDonation[]; 
                 <td className="py-2 pr-4 whitespace-nowrap">${Number(d.amount).toFixed(2)}</td>
                 <td className="py-2 pr-4 capitalize whitespace-nowrap">{d.source.toLowerCase().replace('_', ' ')}</td>
                 <td className="py-2 pr-4">{d.description || '-'}</td>
-                <td className="py-2"><DownloadPDF url={`/api/members/${memberId}/receipt/${d.id}`} label="Receipt" /></td>
+                <td className="py-2"><OpenReceipt url={`/api/members/${memberId}/receipt/${d.id}`} label="Receipt" /></td>
               </tr>
             ))}
           </tbody>
@@ -618,11 +618,10 @@ function BillsTab({ items, memberId, onAdded }: { items: Bill[]; memberId: strin
 function DownloadPDF({ url, label }: { url: string; label: string }) {
   function handleDownload() {
     const token = getToken();
-    const a = document.createElement('a');
-    // Use fetch to get the PDF with auth header
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.blob())
       .then(blob => {
+        const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `${label}.pdf`;
         a.click();
@@ -636,22 +635,36 @@ function DownloadPDF({ url, label }: { url: string; label: string }) {
   );
 }
 
+function OpenReceipt({ url, label }: { url: string; label: string }) {
+  function handleOpen() {
+    const token = getToken();
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.text())
+      .then(html => {
+        const w = window.open('', '_blank');
+        if (w) { w.document.write(html); w.document.close(); }
+      });
+  }
+  return (
+    <button onClick={handleOpen} className="flex items-center gap-1 text-xs text-accent hover:underline">
+      <FileText size={12} /> {label}
+    </button>
+  );
+}
+
 function AnnualReceiptSection({ memberId }: { memberId: string }) {
   const currentYear = new Date().getFullYear();
   const [startDate, setStartDate] = useState(`${currentYear - 1}-01-01`);
   const [endDate, setEndDate] = useState(`${currentYear - 1}-12-31`);
 
-  function handleDownload() {
+  function handleOpen() {
     const token = getToken();
     const url = `/api/members/${memberId}/annual-receipt?start=${startDate}&end=${endDate}`;
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => res.blob())
-      .then(blob => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'annual-receipt.pdf';
-        a.click();
-        URL.revokeObjectURL(a.href);
+      .then(res => res.text())
+      .then(html => {
+        const w = window.open('', '_blank');
+        if (w) { w.document.write(html); w.document.close(); }
       });
   }
 
@@ -669,9 +682,9 @@ function AnnualReceiptSection({ memberId }: { memberId: string }) {
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
             className="px-2 py-1 border border-border rounded text-sm" />
         </div>
-        <button onClick={handleDownload}
+        <button onClick={handleOpen}
           className="flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm hover:opacity-90">
-          <Download size={14} /> Generate PDF
+          <FileText size={14} /> Generate Receipt
         </button>
       </div>
     </div>
