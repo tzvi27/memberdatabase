@@ -10,7 +10,7 @@ interface Member {
   email: string | null;
   phone: string | null;
   status: 'ACTIVE' | 'INACTIVE';
-  recurringDonations: { amount: string; frequency: string }[];
+  recurringDonations: { amount: string; frequency: string; numLeft: string | null; status: string }[];
 }
 
 interface MembersResponse {
@@ -63,6 +63,15 @@ export default function MembersPage() {
     }, 0);
   }
 
+  function getDuration(member: Member): string {
+    const active = member.recurringDonations.filter(d => d.status === 'active');
+    if (active.length === 0) return '-';
+    const allIndefinite = active.every(d => !d.numLeft);
+    if (allIndefinite) return '*';
+    const months = active.map(d => d.numLeft || '*');
+    return months.join(', ');
+  }
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -105,18 +114,19 @@ export default function MembersPage() {
               <th className="text-left px-4 py-3 font-medium">Phone</th>
               <th className="text-left px-4 py-3 font-medium">Status</th>
               <th className="text-right px-4 py-3 font-medium">Monthly</th>
+              <th className="text-center px-4 py-3 font-medium" title="* = indefinite, number = months remaining">Duration</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="text-center py-8 text-muted-foreground">
+                <td colSpan={6} className="text-center py-8 text-muted-foreground">
                   Loading...
                 </td>
               </tr>
             ) : members.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center py-8 text-muted-foreground">
+                <td colSpan={6} className="text-center py-8 text-muted-foreground">
                   {search ? 'No members found matching your search.' : 'No members yet. Import from Banquest or add manually.'}
                 </td>
               </tr>
@@ -144,6 +154,9 @@ export default function MembersPage() {
                   </td>
                   <td className="px-4 py-3 text-right font-medium">
                     ${getMonthlyTotal(member).toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3 text-center text-muted-foreground">
+                    {getDuration(member)}
                   </td>
                 </tr>
               ))
