@@ -57,6 +57,7 @@ interface Member {
   country: string | null;
   notes: string | null;
   status: string;
+  statusManuallySet: boolean;
   aliyahName: string | null;
   wifeName: string | null;
   seatNumber: number | null;
@@ -162,9 +163,26 @@ export default function MemberProfilePage() {
         <div className="flex items-start justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold">{member.firstName} {member.lastName}</h1>
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-              member.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-            }`}>{member.status}</span>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                member.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+              }`}>{member.status}</span>
+              {member.statusManuallySet && <span className="text-xs text-muted-foreground">(manual)</span>}
+              <button
+                onClick={async () => {
+                  const newStatus = member.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+                  if (confirm(`Set this member as ${newStatus}? This will override automatic status detection.`)) {
+                    try {
+                      await api.patch(`/members/${id}/status`, { status: newStatus });
+                      loadMember();
+                    } catch { /* ignore */ }
+                  }
+                }}
+                className="text-xs text-accent hover:underline"
+              >
+                Toggle
+              </button>
+            </div>
           </div>
           {!editing ? (
             <div className="flex gap-3">

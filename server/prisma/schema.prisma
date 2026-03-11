@@ -8,23 +8,26 @@ datasource db {
 }
 
 model Member {
-  id         String   @id @default(uuid())
-  firstName  String
-  lastName   String
-  email      String?  @unique
-  phone      String?
-  street     String?
-  city       String?
-  state      String?
-  zip        String?
-  country    String?
-  notes      String?
-  status     Status   @default(ACTIVE)
-  aliyahName String?
-  wifeName   String?
-  seatNumber Int?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                String   @id @default(uuid())
+  firstName         String
+  lastName          String
+  email             String?  @unique
+  phone             String?
+  street            String?
+  city              String?
+  state             String?
+  zip               String?
+  country           String?
+  notes             String?
+  status            Status   @default(ACTIVE)
+  statusManuallySet Boolean  @default(false)
+  manuallyEdited    Boolean  @default(false)
+  membershipStatus  MembershipStatus @default(MEMBER)
+  aliyahName        String?
+  wifeName          String?
+  seatNumber        Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   recurringDonations RecurringDonation[]
   oneTimeDonations   OneTimeDonation[]
@@ -37,22 +40,49 @@ enum Status {
   INACTIVE
 }
 
+enum MembershipStatus {
+  MEMBER
+  NON_MEMBER
+}
+
+model Donor {
+  id        String   @id @default(uuid())
+  firstName String
+  lastName  String
+  email     String?  @unique
+  phone     String?
+  street    String?
+  city      String?
+  state     String?
+  zip       String?
+  country   String?
+  notes     String?
+  wifeName  String?
+  status    Status   @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  oneTimeDonations OneTimeDonation[]
+  zellePayments    ZellePayment[]
+}
+
 model RecurringDonation {
-  id          String    @id @default(uuid())
+  id          String           @id @default(uuid())
   memberId    String
-  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  member      Member           @relation(fields: [memberId], references: [id], onDelete: Cascade)
   amount      Decimal
   frequency   Frequency
   status      String
+  category    DonationCategory @default(MEMBERSHIP_RECURRING)
   startDate   DateTime
   nextDueDate DateTime?
   description String?
-  banquestId  String?   @unique
+  banquestId  String?          @unique
   numLeft     String?
-  failures    Int       @default(0)
+  failures    Int              @default(0)
   cardLast4   String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 }
 
 enum Frequency {
@@ -60,18 +90,28 @@ enum Frequency {
   ANNUAL
 }
 
+enum DonationCategory {
+  MEMBERSHIP_RECURRING
+  OTHER_RECURRING
+  ONE_TIME_DONATION
+}
+
 model OneTimeDonation {
-  id          String         @id @default(uuid())
-  memberId    String?
-  member      Member?        @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  amount      Decimal
-  date        DateTime
-  source      DonationSource
-  description String?
-  notes       String?
-  donorName   String?
-  externalId  String?        @unique
-  createdAt   DateTime       @default(now())
+  id              String           @id @default(uuid())
+  memberId        String?
+  member          Member?          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  donorId         String?
+  donor           Donor?           @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  amount          Decimal
+  date            DateTime
+  source          DonationSource
+  category        DonationCategory @default(ONE_TIME_DONATION)
+  description     String?
+  notes           String?
+  donorName       String?
+  externalId      String?          @unique
+  manuallyMatched Boolean          @default(false)
+  createdAt       DateTime         @default(now())
 }
 
 enum DonationSource {
@@ -114,11 +154,14 @@ model ZellePayment {
   id                String   @id @default(uuid())
   memberId          String?
   member            Member?  @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  donorId           String?
+  donor             Donor?   @relation(fields: [donorId], references: [id], onDelete: SetNull)
   amount            Decimal
   date              DateTime
   senderName        String
   transactionNumber String?  @unique
   matched           Boolean  @default(false)
+  manuallyMatched   Boolean  @default(false)
   rawData           String?
   createdAt         DateTime @default(now())
 }
@@ -136,4 +179,26 @@ model Receipt {
   createdAt      DateTime @default(now())
 
   @@unique([donationId, donationType])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  entityType String   // "member", "donation", "zelle", "donor"
+  entityId   String
+  action     String   // "status_change", "manual_match", "field_edit", "merge"
+  field      String?
+  oldValue   String?
+  newValue   String?
+  details    String?
+  createdAt  DateTime @default(now())
+}
+
+model MatchRule {
+  id             Int      @id @default(autoincrement())
+  donorName      String
+  memberId       String?
+  donorId        String?
+  createdAt      DateTime @default(now())
+
+  @@unique([donorName])
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, CheckCircle, Inbox } from 'lucide-react';
+import { Search, CheckCircle, Inbox, RefreshCw, Users, Heart } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface UnmatchedItem {
@@ -13,11 +13,17 @@ interface UnmatchedItem {
   externalId: string | null;
 }
 
-interface MemberOption {
+interface SearchResult {
   id: string;
   firstName: string;
   lastName: string;
   email: string | null;
+}
+
+interface SimilarResult {
+  similar: { id: string; type: string; amount: number; date: string }[];
+  count: number;
+  donorName: string;
 }
 
 const SOURCE_LABELS: Record<string, { label: string; class: string }> = {
@@ -34,8 +40,13 @@ export default function UnmatchedPage() {
   const [loading, setLoading] = useState(true);
   const [matchingId, setMatchingId] = useState<string | null>(null);
   const [matchingType, setMatchingType] = useState<string>('');
-  const [memberSearch, setMemberSearch] = useState('');
-  const [memberResults, setMemberResults] = useState<MemberOption[]>([]);
+  const [matchTarget, setMatchTarget] = useState<'member' | 'donor'>('member');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [rerunning, setRerunning] = useState(false);
+  const [rerunResult, setRerunResult] = useState<string | null>(null);
+  const [bulkPrompt, setBulkPrompt] = useState<{ donorName: string; similar: SimilarResult['similar']; memberId?: string; donorId?: string; targetName: string } | null>(null);
+  const [bulkMatching, setBulkMatching] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -47,36 +58,81 @@ export default function UnmatchedPage() {
 
   useEffect(() => { load(); }, []);
 
-  async function searchMembers(query: string) {
-    setMemberSearch(query);
-    if (query.length < 2) { setMemberResults([]); return; }
+  async function searchEntities(query: string) {
+    setSearchQuery(query);
+    if (query.length < 2) { setSearchResults([]); return; }
     try {
-      const data = await api.get<{ members: MemberOption[] }>(`/members?search=${encodeURIComponent(query)}&limit=5`);
-      setMemberResults(data.members);
+      const endpoint = matchTarget === 'member' ? '/members' : '/donors';
+      const data = await api.get<{ members?: SearchResult[]; donors?: SearchResult[] }>(`${endpoint}?search=${encodeURIComponent(query)}&limit=5`);
+      setSearchResults(data.members || data.donors || []);
     } catch { /* ignore */ }
   }
 
-  async function matchItem(itemId: string, memberId: string, type: string) {
+  async function matchItem(itemId: string, targetId: string, type: string, targetName: string) {
     try {
-      await api.put(`/unmatched/${itemId}/match`, { memberId, type });
+      const body = matchTarget === 'member'
+        ? { memberId: targetId, type }
+        : { donorId: targetId, type };
+      await api.put(`/unmatched/${itemId}/match`, body);
+
+      // Check for similar unmatched records
+      try {
+        const sim = await api.get<SimilarResult>(`/unmatched/${itemId}/similar?type=${type}`);
+        if (sim.count > 0) {
+          setBulkPrompt({
+            donorName: sim.donorName,
+            similar: sim.similar,
+            memberId: matchTarget === 'member' ? targetId : undefined,
+            donorId: matchTarget === 'donor' ? targetId : undefined,
+            targetName,
+          });
+        }
+      } catch { /* ignore */ }
+
       setMatchingId(null);
-      setMemberSearch('');
-      setMemberResults([]);
+      setSearchQuery('');
+      setSearchResults([]);
       load();
     } catch { /* ignore */ }
+  }
+
+  async function handleBulkMatch() {
+    if (!bulkPrompt) return;
+    setBulkMatching(true);
+    try {
+      await api.post('/unmatched/bulk-match', {
+        items: bulkPrompt.similar.map(s => ({ id: s.id, type: s.type })),
+        memberId: bulkPrompt.memberId,
+        donorId: bulkPrompt.donorId,
+      });
+      setBulkPrompt(null);
+      load();
+    } catch { /* ignore */ } finally { setBulkMatching(false); }
+  }
+
+  async function handleRerun() {
+    setRerunning(true);
+    setRerunResult(null);
+    try {
+      const data = await api.post<{ processed: number; newMatches: number }>('/unmatched/rerun-matching');
+      setRerunResult(`Matched ${data.newMatches} of ${data.processed} records.`);
+      load();
+    } catch (err: any) {
+      setRerunResult(`Error: ${err.message}`);
+    } finally { setRerunning(false); }
   }
 
   function startMatching(item: UnmatchedItem) {
     setMatchingId(item.id);
     setMatchingType(item.type);
-    setMemberSearch('');
-    setMemberResults([]);
+    setSearchQuery('');
+    setSearchResults([]);
   }
 
   function cancelMatching() {
     setMatchingId(null);
-    setMemberSearch('');
-    setMemberResults([]);
+    setSearchQuery('');
+    setSearchResults([]);
   }
 
   return (
@@ -84,10 +140,44 @@ export default function UnmatchedPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Misc Donations</h1>
-          <p className="text-sm text-muted-foreground">Unmatched donations from all import sources. Match them to members manually.</p>
+          <p className="text-sm text-muted-foreground">Unmatched donations from all import sources. Match them to members or donors.</p>
         </div>
-        <span className="text-sm text-muted-foreground">{items.length} unmatched</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">{items.length} unmatched</span>
+          <button onClick={handleRerun} disabled={rerunning}
+            className="flex items-center gap-2 px-3 py-1.5 border border-border rounded-md text-sm hover:bg-muted disabled:opacity-50">
+            <RefreshCw size={14} className={rerunning ? 'animate-spin' : ''} />
+            {rerunning ? 'Running...' : 'Rerun Matching'}
+          </button>
+        </div>
       </div>
+
+      {rerunResult && (
+        <div className={`px-4 py-3 rounded-md mb-4 text-sm ${rerunResult.startsWith('Error') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+          {rerunResult}
+          <button onClick={() => setRerunResult(null)} className="ml-2 underline">dismiss</button>
+        </div>
+      )}
+
+      {bulkPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-background rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold mb-2">Match Similar Records?</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              There {bulkPrompt.similar.length === 1 ? 'is' : 'are'} <strong>{bulkPrompt.similar.length}</strong> other
+              unmatched donation{bulkPrompt.similar.length !== 1 ? 's' : ''} from &quot;<strong>{bulkPrompt.donorName}</strong>&quot;.
+              Match all of them to <strong>{bulkPrompt.targetName}</strong>?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setBulkPrompt(null)} className="px-4 py-2 border border-border rounded-md text-sm hover:bg-muted">Skip</button>
+              <button onClick={handleBulkMatch} disabled={bulkMatching}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90 disabled:opacity-50">
+                {bulkMatching ? 'Matching...' : `Match All ${bulkPrompt.similar.length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-background rounded-lg border border-border overflow-hidden">
         {loading ? (
@@ -123,22 +213,32 @@ export default function UnmatchedPage() {
                   <td className="px-4 py-2 text-right font-medium">${item.amount.toFixed(2)}</td>
                   <td className="px-4 py-2">
                     {matchingId === item.id ? (
-                      <div className="space-y-1 min-w-[200px]">
+                      <div className="space-y-1 min-w-[220px]">
+                        <div className="flex gap-1 mb-1">
+                          <button onClick={() => { setMatchTarget('member'); setSearchQuery(''); setSearchResults([]); }}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs ${matchTarget === 'member' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                            <Users size={10} /> Member
+                          </button>
+                          <button onClick={() => { setMatchTarget('donor'); setSearchQuery(''); setSearchResults([]); }}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs ${matchTarget === 'donor' ? 'bg-purple-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                            <Heart size={10} /> Donor
+                          </button>
+                        </div>
                         <div className="relative">
                           <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
                           <input
                             type="text"
-                            placeholder="Search member..."
-                            value={memberSearch}
-                            onChange={e => searchMembers(e.target.value)}
+                            placeholder={`Search ${matchTarget}...`}
+                            value={searchQuery}
+                            onChange={e => searchEntities(e.target.value)}
                             className="w-full pl-7 pr-2 py-1 border border-border rounded text-xs"
                             autoFocus
                           />
                         </div>
-                        {memberResults.map(m => (
-                          <button key={m.id} onClick={() => matchItem(item.id, m.id, matchingType)}
+                        {searchResults.map(r => (
+                          <button key={r.id} onClick={() => matchItem(item.id, r.id, matchingType, `${r.firstName} ${r.lastName}`)}
                             className="block w-full text-left px-2 py-1 text-xs hover:bg-muted rounded">
-                            {m.firstName} {m.lastName} {m.email ? `(${m.email})` : ''}
+                            {r.firstName} {r.lastName} {r.email ? `(${r.email})` : ''}
                           </button>
                         ))}
                         <button onClick={cancelMatching} className="text-xs text-muted-foreground hover:underline">Cancel</button>

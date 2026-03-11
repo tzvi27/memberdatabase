@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Upload, CheckCircle, Search } from 'lucide-react';
+import { Upload, CheckCircle, Search, Users, Heart } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface ZellePayment {
@@ -12,7 +12,7 @@ interface ZellePayment {
   memberId: string | null;
 }
 
-interface MemberOption {
+interface SearchResult {
   id: string;
   firstName: string;
   lastName: string;
@@ -26,8 +26,9 @@ export default function ZellePage() {
   const [uploadText, setUploadText] = useState('');
   const [showUpload, setShowUpload] = useState(false);
   const [matchingId, setMatchingId] = useState<string | null>(null);
-  const [memberSearch, setMemberSearch] = useState('');
-  const [memberResults, setMemberResults] = useState<MemberOption[]>([]);
+  const [matchTarget, setMatchTarget] = useState<'member' | 'donor'>('member');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
 
   async function loadPending() {
@@ -68,21 +69,25 @@ export default function ZellePage() {
     } finally { setUploading(false); }
   }
 
-  async function searchMembers(query: string) {
-    setMemberSearch(query);
-    if (query.length < 2) { setMemberResults([]); return; }
+  async function searchEntities(query: string) {
+    setSearchQuery(query);
+    if (query.length < 2) { setSearchResults([]); return; }
     try {
-      const data = await api.get<{ members: MemberOption[] }>(`/members?search=${encodeURIComponent(query)}&limit=5`);
-      setMemberResults(data.members);
+      const endpoint = matchTarget === 'member' ? '/members' : '/donors';
+      const data = await api.get<{ members?: SearchResult[]; donors?: SearchResult[] }>(`${endpoint}?search=${encodeURIComponent(query)}&limit=5`);
+      setSearchResults(data.members || data.donors || []);
     } catch { /* ignore */ }
   }
 
-  async function matchPayment(paymentId: string, memberId: string) {
+  async function matchPayment(paymentId: string, targetId: string) {
     try {
-      await api.put(`/zelle/${paymentId}/match`, { memberId });
+      const body = matchTarget === 'member'
+        ? { memberId: targetId }
+        : { donorId: targetId };
+      await api.put(`/zelle/${paymentId}/match`, body);
       setMatchingId(null);
-      setMemberSearch('');
-      setMemberResults([]);
+      setSearchQuery('');
+      setSearchResults([]);
       loadPending();
     } catch { /* ignore */ }
   }
@@ -136,7 +141,7 @@ export default function ZellePage() {
       <div className="bg-background rounded-lg border border-border overflow-hidden">
         <div className="px-4 py-3 bg-muted border-b border-border">
           <h2 className="text-sm font-medium">Unmatched Payments ({pending.length})</h2>
-          <p className="text-xs text-muted-foreground">Match these payments to members</p>
+          <p className="text-xs text-muted-foreground">Match these payments to members or donors</p>
         </div>
         {loading ? (
           <p className="p-4 text-sm text-muted-foreground">Loading...</p>
@@ -162,25 +167,35 @@ export default function ZellePage() {
                   <td className="px-4 py-2 text-muted-foreground">{p.transactionNumber || '-'}</td>
                   <td className="px-4 py-2">
                     {matchingId === p.id ? (
-                      <div className="space-y-1">
+                      <div className="space-y-1 min-w-[220px]">
+                        <div className="flex gap-1 mb-1">
+                          <button onClick={() => { setMatchTarget('member'); setSearchQuery(''); setSearchResults([]); }}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs ${matchTarget === 'member' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                            <Users size={10} /> Member
+                          </button>
+                          <button onClick={() => { setMatchTarget('donor'); setSearchQuery(''); setSearchResults([]); }}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs ${matchTarget === 'donor' ? 'bg-purple-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+                            <Heart size={10} /> Donor
+                          </button>
+                        </div>
                         <div className="relative">
                           <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
                           <input
                             type="text"
-                            placeholder="Search member..."
-                            value={memberSearch}
-                            onChange={e => searchMembers(e.target.value)}
+                            placeholder={`Search ${matchTarget}...`}
+                            value={searchQuery}
+                            onChange={e => searchEntities(e.target.value)}
                             className="w-full pl-7 pr-2 py-1 border border-border rounded text-xs"
                             autoFocus
                           />
                         </div>
-                        {memberResults.map(m => (
-                          <button key={m.id} onClick={() => matchPayment(p.id, m.id)}
+                        {searchResults.map(r => (
+                          <button key={r.id} onClick={() => matchPayment(p.id, r.id)}
                             className="block w-full text-left px-2 py-1 text-xs hover:bg-muted rounded">
-                            {m.firstName} {m.lastName} {m.email ? `(${m.email})` : ''}
+                            {r.firstName} {r.lastName} {r.email ? `(${r.email})` : ''}
                           </button>
                         ))}
-                        <button onClick={() => { setMatchingId(null); setMemberSearch(''); setMemberResults([]); }}
+                        <button onClick={() => { setMatchingId(null); setSearchQuery(''); setSearchResults([]); }}
                           className="text-xs text-muted-foreground hover:underline">Cancel</button>
                       </div>
                     ) : (
