@@ -34,11 +34,11 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
           OR: [
             {
               AND: [
-                { firstName: { contains: payment.senderFirstName, mode: 'insensitive' } },
-                { lastName: { contains: payment.senderLastName, mode: 'insensitive' } },
+                { firstName: { equals: payment.senderFirstName, mode: 'insensitive' } },
+                { lastName: { equals: payment.senderLastName, mode: 'insensitive' } },
               ],
             },
-            { wifeName: { contains: payment.senderName, mode: 'insensitive' } },
+            { wifeName: { equals: payment.senderName, mode: 'insensitive' } },
           ],
         },
       });

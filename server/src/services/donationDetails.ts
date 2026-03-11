@@ -104,12 +104,12 @@ export async function parseDonationDetailsXlsx(buffer: Buffer): Promise<Donation
     select: { id: true, firstName: true, lastName: true, email: true, wifeName: true },
   });
   const nameMap = new Map<string, typeof allMembers[0]>();
-  const lastNameMap = new Map<string, typeof allMembers[0][]>();
+  const wifeNameMap = new Map<string, typeof allMembers[0]>();
   for (const m of allMembers) {
     nameMap.set(`${m.firstName.toLowerCase()} ${m.lastName.toLowerCase()}`, m);
-    const lnKey = m.lastName.toLowerCase();
-    if (!lastNameMap.has(lnKey)) lastNameMap.set(lnKey, []);
-    lastNameMap.get(lnKey)!.push(m);
+    if (m.wifeName) {
+      wifeNameMap.set(m.wifeName.toLowerCase(), m);
+    }
   }
 
   // Check existing externalIds
@@ -179,12 +179,12 @@ export async function parseDonationDetailsXlsx(buffer: Buffer): Promise<Donation
       matchType = 'name';
     }
 
-    // Try last-name-only match if single result
-    if (!matchedMemberId && last) {
-      const lastMatches = lastNameMap.get(last.toLowerCase());
-      if (lastMatches && lastMatches.length === 1) {
-        matchedMemberId = lastMatches[0].id;
-        matchedMemberName = `${lastMatches[0].firstName} ${lastMatches[0].lastName}`;
+    // Try wife name match
+    if (!matchedMemberId) {
+      const wifeMatch = wifeNameMap.get(donorName.toLowerCase().trim());
+      if (wifeMatch) {
+        matchedMemberId = wifeMatch.id;
+        matchedMemberName = `${wifeMatch.firstName} ${wifeMatch.lastName}`;
         matchType = 'name';
       }
     }
