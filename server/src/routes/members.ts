@@ -351,6 +351,19 @@ router.patch('/recurring-donations/:donationId/clear-failures', async (req: Requ
   }
 });
 
+// Delete a recurring donation
+router.delete('/recurring-donations/:donationId', async (req: Request, res: Response) => {
+  try {
+    const donationId = req.params.donationId as string;
+    await prisma.recurringDonation.delete({ where: { id: donationId } });
+    res.json({ message: 'Recurring donation deleted' });
+  } catch (err) {
+    console.error('Error deleting recurring donation:', err);
+    res.status(500).json({ message: 'Failed to delete recurring donation' });
+  }
+});
+
+
 // Toggle member status (Active/Inactive) - manual override
 router.patch('/:id/status', async (req: Request, res: Response) => {
   try {
