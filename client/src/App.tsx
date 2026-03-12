@@ -8,7 +8,7 @@ import MemberProfilePage from './pages/MemberProfilePage';
 import BanquestImportPage from './pages/BanquestImportPage';
 import ImportPage from './pages/ImportPage';
 import UnmatchedPage from './pages/UnmatchedPage';
-import ZellePage from './pages/ZellePage';
+import AIImportPage from './pages/AIImportPage';
 import DonorsPage from './pages/DonorsPage';
 import DonorProfilePage from './pages/DonorProfilePage';
 
@@ -39,7 +39,7 @@ function App() {
           <Route path="/donors" element={<DonorsPage />} />
           <Route path="/donors/:id" element={<DonorProfilePage />} />
           <Route path="/unmatched" element={<UnmatchedPage />} />
-          <Route path="/zelle" element={<ZellePage />} />
+          <Route path="/ai-import" element={<AIImportPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

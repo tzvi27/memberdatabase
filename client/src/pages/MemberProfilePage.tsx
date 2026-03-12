@@ -519,6 +519,8 @@ function DonationsTab({ items, memberId, onAdded }: { items: OneTimeDonation[]; 
                 <option value="CHECK">Check</option>
                 <option value="ZELLE">Zelle</option>
                 <option value="CREDIT_CARD">Credit Card</option>
+                <option value="OJC">OJC</option>
+                <option value="DONORS_FUND">Donors Fund</option>
                 <option value="OTHER">Other</option>
               </select>
             </div>
@@ -546,7 +548,7 @@ function DonationsTab({ items, memberId, onAdded }: { items: OneTimeDonation[]; 
               <tr key={d.id} className="border-t border-border">
                 <td className="py-2 pr-4 whitespace-nowrap">{new Date(d.date).toLocaleDateString()}</td>
                 <td className="py-2 pr-4 whitespace-nowrap">${Number(d.amount).toFixed(2)}</td>
-                <td className="py-2 pr-4 capitalize whitespace-nowrap">{d.source.toLowerCase().replace('_', ' ')}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">{{ CREDIT_CARD: 'Credit Card', DONORS_FUND: 'Donors Fund', OJC: 'OJC', ZELLE: 'Zelle', CASH: 'Cash', CHECK: 'Check', OTHER: 'Other' }[d.source] || d.source}</td>
                 <td className="py-2 pr-4">{d.description || '-'}</td>
                 <td className="py-2"><OpenReceipt url={`/api/members/${memberId}/receipt/${d.id}`} label="Receipt" /></td>
               </tr>

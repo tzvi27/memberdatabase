@@ -120,6 +120,7 @@ enum DonationSource {
   CHECK
   CREDIT_CARD
   DONORS_FUND
+  OJC
   OTHER
 }
 
