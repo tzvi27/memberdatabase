@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, Upload, Inbox, CreditCard, Heart, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Upload, Inbox, Sparkles, Heart, LogOut } from 'lucide-react';
 import { clearToken } from '../lib/auth';
 import { api } from '../lib/api';
 import ToastContainer from './ToastContainer';
@@ -25,7 +25,7 @@ export default function Layout() {
     { to: '/members', icon: Users, label: 'Members' },
     { to: '/donors', icon: Heart, label: 'Donors' },
     { to: '/import', icon: Upload, label: 'Import' },
-    { to: '/zelle', icon: CreditCard, label: 'Zelle' },
+    { to: '/ai-import', icon: Sparkles, label: 'AI Import' },
   ];
 
   return (
