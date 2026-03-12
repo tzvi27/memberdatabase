@@ -206,6 +206,24 @@ router.post('/bulk-match', async (req: Request, res: Response) => {
   }
 });
 
+
+// Delete an unmatched item (donation or zelle)
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const type = req.query.type as string;
+    if (type === 'zelle') {
+      await prisma.zellePayment.delete({ where: { id } });
+    } else {
+      await prisma.oneTimeDonation.delete({ where: { id } });
+    }
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    console.error('Error deleting unmatched item:', err);
+    res.status(500).json({ message: 'Failed to delete' });
+  }
+});
+
 // Rerun matching: attempt to match all unmatched records against current members/donors
 router.post('/rerun-matching', async (_req: Request, res: Response) => {
   try {

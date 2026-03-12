@@ -123,6 +123,17 @@ router.put('/:id/match', async (req: Request, res: Response) => {
   }
 });
 
+// Delete a Zelle payment
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    await prisma.zellePayment.delete({ where: { id: req.params.id as string } });
+    res.json({ message: 'Zelle payment deleted' });
+  } catch (err) {
+    console.error('Error deleting Zelle payment:', err);
+    res.status(500).json({ message: 'Failed to delete Zelle payment' });
+  }
+});
+
 interface ParsedZellePayment {
   senderName: string;
   senderFirstName: string;

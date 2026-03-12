@@ -47,4 +47,15 @@ router.post('/:memberId/donations', async (req: Request, res: Response) => {
   }
 });
 
+// Delete a one-time donation
+router.delete('/donations/:id', async (req: Request, res: Response) => {
+  try {
+    await prisma.oneTimeDonation.delete({ where: { id: req.params.id as string } });
+    res.json({ message: 'Donation deleted' });
+  } catch (err) {
+    console.error('Error deleting donation:', err);
+    res.status(500).json({ message: 'Failed to delete donation' });
+  }
+});
+
 export default router;
