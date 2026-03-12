@@ -403,6 +403,7 @@ function RecurringTab({ items, onUpdated }: { items: RecurringDonation[]; onUpda
     }
   }
 
+
   if (!items.length) return <p className="text-sm text-muted-foreground">No recurring donations.</p>;
   return (
     <div className="overflow-x-auto">
