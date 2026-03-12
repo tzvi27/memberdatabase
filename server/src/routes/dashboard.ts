@@ -41,7 +41,7 @@ router.get('/', async (_req: Request, res: Response) => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-    const [monthlyOneTime, monthlyZelle] = await Promise.all([
+    const [monthlyOneTime, monthlyZelle, monthlyMiscOneTime, monthlyMiscZelle] = await Promise.all([
       prisma.oneTimeDonation.aggregate({
         where: { date: { gte: monthStart, lte: monthEnd } },
         _sum: { amount: true },
@@ -50,9 +50,18 @@ router.get('/', async (_req: Request, res: Response) => {
         where: { date: { gte: monthStart, lte: monthEnd } },
         _sum: { amount: true },
       }),
+      prisma.oneTimeDonation.aggregate({
+        where: { date: { gte: monthStart, lte: monthEnd }, memberId: null, donorId: null },
+        _sum: { amount: true },
+      }),
+      prisma.zellePayment.aggregate({
+        where: { date: { gte: monthStart, lte: monthEnd }, matched: false },
+        _sum: { amount: true },
+      }),
     ]);
 
     const monthlyOtherDonations = Number(monthlyOneTime._sum.amount || 0) + Number(monthlyZelle._sum.amount || 0);
+    const monthlyMiscDonations = Number(monthlyMiscOneTime._sum.amount || 0) + Number(monthlyMiscZelle._sum.amount || 0);
 
     res.json({
       activeMembers,
@@ -60,6 +69,7 @@ router.get('/', async (_req: Request, res: Response) => {
       membershipRecurring: Math.round(membershipRecurring * 100) / 100,
       otherRecurring: Math.round(otherRecurring * 100) / 100,
       monthlyOtherDonations: Math.round(monthlyOtherDonations * 100) / 100,
+      monthlyMiscDonations: Math.round(monthlyMiscDonations * 100) / 100,
       needsAttention: failedCount,
       unmatchedCount: unmatchedDonations + unmatchedZelle,
       outstandingBills: {
@@ -100,13 +110,19 @@ router.get('/stats', async (req: Request, res: Response) => {
         periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
     }
 
-    const [recurringDonations, oneTimeDonations, zellePayments] = await Promise.all([
+    const [recurringDonations, oneTimeDonations, zellePayments, miscOneTime, miscZelle] = await Promise.all([
       prisma.recurringDonation.findMany({ where: { status: 'active' } }),
       prisma.oneTimeDonation.findMany({
         where: { date: { gte: periodStart, lte: periodEnd } },
       }),
       prisma.zellePayment.findMany({
         where: { date: { gte: periodStart, lte: periodEnd } },
+      }),
+      prisma.oneTimeDonation.findMany({
+        where: { date: { gte: periodStart, lte: periodEnd }, memberId: null, donorId: null },
+      }),
+      prisma.zellePayment.findMany({
+        where: { date: { gte: periodStart, lte: periodEnd }, matched: false },
       }),
     ]);
 
@@ -127,19 +143,24 @@ router.get('/stats', async (req: Request, res: Response) => {
     const oneTimeTotal = oneTimeDonations.reduce((sum, d) => sum + Number(d.amount), 0) +
       zellePayments.reduce((sum, z) => sum + Number(z.amount), 0);
 
-    const total = membershipRecurring + otherRecurring + oneTimeTotal;
+    const miscTotal = miscOneTime.reduce((sum, d) => sum + Number(d.amount), 0) +
+      miscZelle.reduce((sum, z) => sum + Number(z.amount), 0);
+
+    const total = membershipRecurring + otherRecurring + oneTimeTotal + miscTotal;
 
     res.json({
       period: { start: periodStart.toISOString(), end: periodEnd.toISOString() },
       membershipRecurring: Math.round(membershipRecurring * 100) / 100,
       otherRecurring: Math.round(otherRecurring * 100) / 100,
       oneTimeDonations: Math.round(oneTimeTotal * 100) / 100,
+      miscDonations: Math.round(miscTotal * 100) / 100,
       total: Math.round(total * 100) / 100,
-      donationCount: oneTimeDonations.length + zellePayments.length,
+      donationCount: oneTimeDonations.length + zellePayments.length + miscOneTime.length + miscZelle.length,
       breakdown: [
         { category: 'MEMBERSHIP_RECURRING', amount: Math.round(membershipRecurring * 100) / 100 },
         { category: 'OTHER_RECURRING', amount: Math.round(otherRecurring * 100) / 100 },
         { category: 'ONE_TIME_DONATION', amount: Math.round(oneTimeTotal * 100) / 100 },
+        { category: 'MISC_UNMATCHED', amount: Math.round(miscTotal * 100) / 100 },
       ],
     });
   } catch (err) {
