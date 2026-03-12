@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kehilat Yaakov favicon">
+  <rect width="64" height="64" rx="8" fill="#ffffff" />
+  <path
+    d="M9 44 Q18 16 18 16 Q39 14 49 23 Q39 19 22 21 Q16 33 12 41 Q20 38 29 40 Q34 34 40 36 Q43 39 44 45 Q52 43 58 45 Q48 38 36 41 Q34 35 30 32 Q24 30 21 34 Q15 32 9 44 Z"
+    fill="none"
+    stroke="#000000"
+    stroke-width="4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
