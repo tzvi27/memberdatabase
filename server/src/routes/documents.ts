@@ -6,6 +6,7 @@ import { generateInvoicePDF } from '../services/pdf';
 import { generateDonationReceiptHtml, generateAnnualReceiptHtml } from '../services/receiptHtml';
 
 const router = Router();
+const settingsRouter = Router();
 const logoUpload = multer({ dest: path.join(__dirname, '../../uploads') });
 
 // Generate invoice PDF from a bill
@@ -165,8 +166,8 @@ router.get('/:memberId/annual-receipt', async (req: Request, res: Response) => {
   }
 });
 
-// Upload logo
-router.post('/settings/logo', logoUpload.single('logo'), async (req: Request, res: Response) => {
+// Upload logo — mounted on settingsRouter at /api/settings
+settingsRouter.post('/logo', logoUpload.single('logo'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       res.status(400).json({ message: 'No file uploaded' });
@@ -192,3 +193,4 @@ router.post('/settings/logo', logoUpload.single('logo'), async (req: Request, re
 });
 
 export default router;
+export { settingsRouter };
