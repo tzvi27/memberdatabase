@@ -1,22 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kehilat Yaakov favicon">
-  <rect width="64" height="64" fill="#ffffff" />
+  <!-- White rounded-square background -->
+  <rect width="64" height="64" rx="14" ry="14" fill="#ffffff" />
+  <!-- Left vertical stroke + top arching curve (top of kaf כ) -->
   <path
-    d="M8 42 Q18 16 18 16 Q38 14 48 22 Q40 18 21 20 Q15 33 11 40 Q20 37 28 39 Q33 33 40 35 Q43 38 44 44 Q52 42 58 44 Q48 37 36 40 Q34 34 30 31 Q24 29 21 33 Q15 31 8 42 Z"
+    d="M 20,52 L 20,30 Q 21,18 28,15 Q 40,11 52,21"
     fill="none"
     stroke="#000000"
-    stroke-width="2.8"
+    stroke-width="3.2"
     stroke-linecap="round"
     stroke-linejoin="round"
   />
-  <text
-    x="38"
-    y="29"
-    text-anchor="middle"
-    font-size="8"
-    font-family="'Arial Hebrew', 'Noto Sans Hebrew', Arial, sans-serif"
-    direction="rtl"
-    fill="#000000"
-  >
-    קה"י
-  </text>
+  <!-- Bottom stroke with small bump at end -->
+  <path
+    d="M 20,52 Q 30,56 40,53 Q 46,50 48,46"
+    fill="none"
+    stroke="#000000"
+    stroke-width="3.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
 </svg>
