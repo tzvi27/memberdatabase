@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kehilat Yaakov favicon">
+  <rect width="64" height="64" fill="#ffffff" />
+  <path
+    d="M8 42 Q18 16 18 16 Q38 14 48 22 Q40 18 21 20 Q15 33 11 40 Q20 37 28 39 Q33 33 40 35 Q43 38 44 44 Q52 42 58 44 Q48 37 36 40 Q34 34 30 31 Q24 29 21 33 Q15 31 8 42 Z"
+    fill="none"
+    stroke="#000000"
+    stroke-width="2.8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <text
+    x="38"
+    y="29"
+    text-anchor="middle"
+    font-size="8"
+    font-family="'Arial Hebrew', 'Noto Sans Hebrew', Arial, sans-serif"
+    direction="rtl"
+    fill="#000000"
+  >
+    קה"י
+  </text>
+</svg>
