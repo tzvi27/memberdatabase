@@ -164,9 +164,10 @@ router.post('/confirm', async (_req: Request, res: Response) => {
 });
 
 // Delete all members, donations, audit logs, and match rules (full reset)
-router.delete('/clear-all', async (_req: Request, res: Response) => {
+router.delete('/clear-all', async (req: Request, res: Response) => {
   try {
     const { prisma } = await import('../index');
+    console.warn(`[CLEAR-ALL] Full database reset initiated at ${new Date().toISOString()} from IP ${req.ip}`);
     await prisma.$transaction(async (tx) => {
       await tx.receipt.deleteMany({});
       await tx.billLineItem.deleteMany({});
@@ -179,6 +180,7 @@ router.delete('/clear-all', async (_req: Request, res: Response) => {
       await tx.donor.deleteMany({});
       await tx.member.deleteMany({});
     });
+    console.warn(`[CLEAR-ALL] Full database reset completed at ${new Date().toISOString()}`);
     res.json({ message: 'All members, donations, and import memory cleared.' });
   } catch (err) {
     console.error('Error clearing all data:', err);

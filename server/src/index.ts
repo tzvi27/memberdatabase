@@ -1,4 +1,15 @@
 import 'dotenv/config';
+
+// Fail fast if required env vars are missing in production
+if (process.env.NODE_ENV === 'production') {
+  const required = ['JWT_SECRET', 'ADMIN_PASSWORD_HASH'];
+  const missing = required.filter(k => !process.env[k]);
+  if (missing.length > 0) {
+    console.error(`FATAL: Missing required environment variables: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+}
+
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -11,7 +22,7 @@ import unmatchedRoutes from './routes/unmatched';
 import donationRoutes from './routes/donations';
 import billRoutes from './routes/bills';
 import zelleRoutes from './routes/zelle';
-import documentRoutes from './routes/documents';
+import documentRoutes, { settingsRouter } from './routes/documents';
 import dashboardRoutes from './routes/dashboard';
 import donorRoutes from './routes/donors';
 import { authMiddleware } from './middleware/auth';
@@ -41,7 +52,7 @@ app.use('/api/members', donationRoutes);
 app.use('/api/members', billRoutes);
 app.use('/api/zelle', zelleRoutes);
 app.use('/api/members', documentRoutes);
-app.use('/api', documentRoutes);
+app.use('/api/settings', settingsRouter);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/donors', donorRoutes);
 

@@ -159,7 +159,10 @@ export async function parseDonationDetailsXlsx(buffer: Buffer): Promise<Donation
     } else {
       date = new Date(rawDate);
     }
-    if (isNaN(date.getTime())) date = new Date();
+    if (isNaN(date.getTime())) {
+      console.warn(`Skipping row with unparseable date: "${rawDate}" for donor "${donorName}"`);
+      continue;
+    }
 
     const memo = String(row['Purpose/Memo'] || '').trim() || null;
     const isDuplicate = existingIdSet.has(externalId);

@@ -180,21 +180,24 @@ router.post('/bulk-match', async (req: Request, res: Response) => {
       return;
     }
 
-    let matched = 0;
-    for (const item of items) {
-      if (item.type === 'zelle') {
-        await prisma.zellePayment.update({
-          where: { id: item.id },
-          data: { memberId: memberId || null, donorId: donorId || null, matched: true, manuallyMatched: true },
-        });
-      } else {
-        await prisma.oneTimeDonation.update({
-          where: { id: item.id },
-          data: { memberId: memberId || null, donorId: donorId || null, manuallyMatched: true },
-        });
+    const matched = await prisma.$transaction(async (tx) => {
+      let count = 0;
+      for (const item of items) {
+        if (item.type === 'zelle') {
+          await tx.zellePayment.update({
+            where: { id: item.id },
+            data: { memberId: memberId || null, donorId: donorId || null, matched: true, manuallyMatched: true },
+          });
+        } else {
+          await tx.oneTimeDonation.update({
+            where: { id: item.id },
+            data: { memberId: memberId || null, donorId: donorId || null, manuallyMatched: true },
+          });
+        }
+        count++;
       }
-      matched++;
-    }
+      return count;
+    });
 
     res.json({ matched });
   } catch (err) {
