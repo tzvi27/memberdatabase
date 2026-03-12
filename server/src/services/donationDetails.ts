@@ -230,31 +230,26 @@ export async function confirmDonationDetailsImport(
   let skippedDuplicates = 0;
   let totalAmount = 0;
 
-  for (const d of donations) {
-    if (d.isDuplicate) {
-      skippedDuplicates++;
-      continue;
-    }
+  const toInsert = donations.filter(d => !d.isDuplicate);
+  skippedDuplicates = donations.length - toInsert.length;
 
-    await prisma.oneTimeDonation.create({
-      data: {
-        memberId: d.matchedMemberId || null,
-        amount: d.amount,
-        date: new Date(d.date),
-        source: d.source,
-        description: d.memo,
-        donorName: !d.matchedMemberId ? d.donorName : null,
-        externalId: d.externalId,
-      },
-    });
-
-    if (d.matchedMemberId) {
-      imported++;
-    } else {
-      unmatched++;
+  await prisma.$transaction(async (tx) => {
+    for (const d of toInsert) {
+      await tx.oneTimeDonation.create({
+        data: {
+          memberId: d.matchedMemberId || null,
+          amount: d.amount,
+          date: new Date(d.date),
+          source: d.source,
+          description: d.memo,
+          donorName: !d.matchedMemberId ? d.donorName : null,
+          externalId: d.externalId,
+        },
+      });
+      if (d.matchedMemberId) imported++; else unmatched++;
+      totalAmount += d.amount;
     }
-    totalAmount += d.amount;
-  }
+  });
 
   return { imported, unmatched, skippedDuplicates, totalAmount };
 }

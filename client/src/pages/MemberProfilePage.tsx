@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Edit2, Save, X, Plus, Download, FileText, Trash2, GitMerge } from 'lucide-react';
 import { api } from '../lib/api';
 import { getToken } from '../lib/auth';
+import { toast } from '../lib/toast';
 
 interface RecurringDonation {
   id: string;
@@ -122,8 +123,10 @@ export default function MemberProfilePage() {
       await api.put(`/members/${id}`, form);
       await loadMember();
       setEditing(false);
+      toast('Member saved successfully');
     } catch (err: any) {
       setError(err.message);
+      toast(err.message || 'Failed to save member', 'error');
     } finally {
       setSaving(false);
     }
@@ -379,6 +382,16 @@ function RecurringTab({ items, onUpdated }: { items: RecurringDonation[]; onUpda
     } catch { /* ignore */ }
   }
 
+  async function clearFailures(id: string) {
+    try {
+      await api.patch(`/members/recurring-donations/${id}/clear-failures`, {});
+      onUpdated();
+      toast('Payment failures cleared');
+    } catch {
+      toast('Failed to clear failures', 'error');
+    }
+  }
+
   if (!items.length) return <p className="text-sm text-muted-foreground">No recurring donations.</p>;
   return (
     <div className="overflow-x-auto">
@@ -423,7 +436,18 @@ function RecurringTab({ items, onUpdated }: { items: RecurringDonation[]; onUpda
             </td>
             <td className="py-2 pr-2">{d.nextDueDate ? new Date(d.nextDueDate).toLocaleDateString() : '-'}</td>
             <td className="py-2 pr-2 text-center">{d.numLeft ? d.numLeft : '*'}</td>
-            <td className="py-2">{d.failures > 0 ? <span className="text-red-600 font-medium">{d.failures}</span> : '0'}</td>
+            <td className="py-2">
+              {d.failures > 0 ? (
+                <span className="flex items-center gap-1">
+                  <span className="text-red-600 font-medium">{d.failures}</span>
+                  <button
+                    onClick={() => clearFailures(d.id)}
+                    title="Clear payment failures"
+                    className="text-muted-foreground hover:text-foreground"
+                  ><X size={12} /></button>
+                </span>
+              ) : '0'}
+            </td>
           </tr>
         ))}
       </tbody>
