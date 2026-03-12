@@ -392,13 +392,24 @@ function RecurringTab({ items, onUpdated }: { items: RecurringDonation[]; onUpda
     }
   }
 
+  async function deleteRecurring(id: string) {
+    if (!confirm('Delete this recurring donation? This cannot be undone.')) return;
+    try {
+      await api.delete(`/members/recurring-donations/${id}`);
+      onUpdated();
+      toast('Recurring donation deleted');
+    } catch {
+      toast('Failed to delete recurring donation', 'error');
+    }
+  }
+
   if (!items.length) return <p className="text-sm text-muted-foreground">No recurring donations.</p>;
   return (
     <div className="overflow-x-auto">
     <table className="w-full text-sm table-fixed">
       <thead><tr className="text-left text-muted-foreground">
-        <th className="pb-2 w-[30%]">Description</th><th className="pb-2 w-[10%]">Amount</th><th className="pb-2 w-[10%]">Freq</th>
-        <th className="pb-2 w-[8%]">Card</th><th className="pb-2 w-[10%]">Status</th><th className="pb-2 w-[12%]">Next Due</th><th className="pb-2 w-[8%]">Duration</th><th className="pb-2 w-[7%]">Fails</th>
+        <th className="pb-2 w-[28%]">Description</th><th className="pb-2 w-[10%]">Amount</th><th className="pb-2 w-[10%]">Freq</th>
+        <th className="pb-2 w-[8%]">Card</th><th className="pb-2 w-[10%]">Status</th><th className="pb-2 w-[12%]">Next Due</th><th className="pb-2 w-[7%]">Duration</th><th className="pb-2 w-[7%]">Fails</th><th className="pb-2 w-[8%]"></th>
       </tr></thead>
       <tbody>
         {items.map(d => (
@@ -436,7 +447,7 @@ function RecurringTab({ items, onUpdated }: { items: RecurringDonation[]; onUpda
             </td>
             <td className="py-2 pr-2">{d.nextDueDate ? new Date(d.nextDueDate).toLocaleDateString() : '-'}</td>
             <td className="py-2 pr-2 text-center">{d.numLeft ? d.numLeft : '*'}</td>
-            <td className="py-2">
+            <td className="py-2 pr-2">
               {d.failures > 0 ? (
                 <span className="flex items-center gap-1">
                   <span className="text-red-600 font-medium">{d.failures}</span>
@@ -447,6 +458,13 @@ function RecurringTab({ items, onUpdated }: { items: RecurringDonation[]; onUpda
                   ><X size={12} /></button>
                 </span>
               ) : '0'}
+            </td>
+            <td className="py-2">
+              <button
+                onClick={() => deleteRecurring(d.id)}
+                title="Delete recurring donation"
+                className="text-muted-foreground hover:text-destructive"
+              ><Trash2 size={14} /></button>
             </td>
           </tr>
         ))}
