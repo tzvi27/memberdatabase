@@ -336,6 +336,21 @@ router.patch('/recurring-donations/:donationId', async (req: Request, res: Respo
   }
 });
 
+// Clear payment failures on a recurring donation (unmark needs-attention)
+router.patch('/recurring-donations/:donationId/clear-failures', async (req: Request, res: Response) => {
+  try {
+    const donationId = req.params.donationId as string;
+    const updated = await prisma.recurringDonation.update({
+      where: { id: donationId },
+      data: { failures: 0 },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error('Error clearing failures:', err);
+    res.status(500).json({ message: 'Failed to clear failures' });
+  }
+});
+
 // Toggle member status (Active/Inactive) - manual override
 router.patch('/:id/status', async (req: Request, res: Response) => {
   try {

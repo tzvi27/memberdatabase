@@ -43,11 +43,11 @@ router.get('/', async (_req: Request, res: Response) => {
 
     const [monthlyOneTime, monthlyZelle, monthlyMiscOneTime, monthlyMiscZelle] = await Promise.all([
       prisma.oneTimeDonation.aggregate({
-        where: { date: { gte: monthStart, lte: monthEnd }, OR: [{ memberId: { not: null } }, { donorId: { not: null } }] },
+        where: { date: { gte: monthStart, lte: monthEnd } },
         _sum: { amount: true },
       }),
       prisma.zellePayment.aggregate({
-        where: { date: { gte: monthStart, lte: monthEnd }, matched: true },
+        where: { date: { gte: monthStart, lte: monthEnd } },
         _sum: { amount: true },
       }),
       prisma.oneTimeDonation.aggregate({
@@ -113,10 +113,10 @@ router.get('/stats', async (req: Request, res: Response) => {
     const [recurringDonations, oneTimeDonations, zellePayments, miscOneTime, miscZelle] = await Promise.all([
       prisma.recurringDonation.findMany({ where: { status: 'active' } }),
       prisma.oneTimeDonation.findMany({
-        where: { date: { gte: periodStart, lte: periodEnd }, OR: [{ memberId: { not: null } }, { donorId: { not: null } }] },
+        where: { date: { gte: periodStart, lte: periodEnd } },
       }),
       prisma.zellePayment.findMany({
-        where: { date: { gte: periodStart, lte: periodEnd }, matched: true },
+        where: { date: { gte: periodStart, lte: periodEnd } },
       }),
       prisma.oneTimeDonation.findMany({
         where: { date: { gte: periodStart, lte: periodEnd }, memberId: null, donorId: null },

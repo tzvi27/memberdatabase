@@ -232,32 +232,27 @@ export async function confirmTransactionImport(
   let skippedDuplicates = 0;
   let totalAmount = 0;
 
-  for (const tx of transactions) {
-    if (tx.isDuplicate) {
-      skippedDuplicates++;
-      continue;
-    }
+  const toInsert = transactions.filter(tx => !tx.isDuplicate);
+  skippedDuplicates = transactions.length - toInsert.length;
 
-    await prisma.oneTimeDonation.create({
-      data: {
-        memberId: tx.matchedMemberId || null,
-        amount: tx.amount,
-        date: new Date(tx.date),
-        source: 'CREDIT_CARD',
-        description: tx.description || null,
-        notes: tx.cardLast4 ? `Card ending ${tx.cardLast4}` : null,
-        donorName: !tx.matchedMemberId ? `${tx.firstName} ${tx.lastName}`.trim() : null,
-        externalId: tx.transactionId || null,
-      },
-    });
-
-    if (tx.matchedMemberId) {
-      imported++;
-    } else {
-      unmatched++;
+  await prisma.$transaction(async (tx) => {
+    for (const t of toInsert) {
+      await tx.oneTimeDonation.create({
+        data: {
+          memberId: t.matchedMemberId || null,
+          amount: t.amount,
+          date: new Date(t.date),
+          source: 'CREDIT_CARD',
+          description: t.description || null,
+          notes: t.cardLast4 ? `Card ending ${t.cardLast4}` : null,
+          donorName: !t.matchedMemberId ? `${t.firstName} ${t.lastName}`.trim() : null,
+          externalId: t.transactionId || null,
+        },
+      });
+      if (t.matchedMemberId) imported++; else unmatched++;
+      totalAmount += t.amount;
     }
-    totalAmount += tx.amount;
-  }
+  });
 
   return { imported, unmatched, skippedDuplicates, totalAmount };
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, DollarSign, AlertTriangle, FileText, Inbox, Heart, TrendingUp } from 'lucide-react';
 import { api } from '../lib/api';
@@ -9,7 +9,6 @@ interface DashboardData {
   membershipRecurring: number;
   otherRecurring: number;
   monthlyOtherDonations: number;
-  monthlyMiscDonations: number;
   needsAttention: number;
   unmatchedCount: number;
   outstandingBills: { count: number; total: number };
@@ -28,6 +27,7 @@ interface StatsData {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [statsPeriod, setStatsPeriod] = useState<'this-month' | 'last-month' | 'this-year' | 'custom'>('this-month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -35,12 +35,16 @@ export default function DashboardPage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const loadDashboard = useCallback(() => {
+    setLoading(true);
+    setLoadError(false);
     api.get<DashboardData>('/dashboard')
       .then(setData)
-      .catch(console.error)
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   useEffect(() => {
     if (statsPeriod === 'custom' && (!customStart || !customEnd)) return;
@@ -57,13 +61,19 @@ export default function DashboardPage() {
   }, [statsPeriod, customStart, customEnd]);
 
   if (loading) return <div className="p-6 text-muted-foreground">Loading dashboard...</div>;
-  if (!data) return <div className="p-6 text-destructive">Failed to load dashboard</div>;
+  if (loadError || !data) return (
+    <div className="p-6">
+      <p className="text-destructive mb-3">Failed to load dashboard.</p>
+      <button onClick={loadDashboard} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:opacity-90">
+        Retry
+      </button>
+    </div>
+  );
 
   const CATEGORY_LABELS: Record<string, string> = {
     MEMBERSHIP_RECURRING: 'Membership Recurring',
     OTHER_RECURRING: 'Other Recurring',
-    ONE_TIME_DONATION: 'One-Time Donations',
-    MISC_UNMATCHED: 'Misc / Unmatched',
+    ONE_TIME_DONATION: 'Other Donations (CC, Zelle, Donors Fund)',
   };
 
   return (
@@ -71,7 +81,7 @@ export default function DashboardPage() {
       <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
 
       {/* Monthly Revenue Tiles */}
-      <div className="grid grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-3 gap-4 mb-4">
         <DashboardCard
           icon={DollarSign}
           label="Membership Recurring"
@@ -92,18 +102,9 @@ export default function DashboardPage() {
           icon={Heart}
           label="Other Donations"
           value={`$${data.monthlyOtherDonations.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
-          subtitle="This month (matched)"
+          subtitle="This month · CC, Zelle, Donors Fund"
           color="text-purple-600"
           bgColor="bg-purple-50"
-        />
-        <DashboardCard
-          icon={Inbox}
-          label="Misc Donations"
-          value={`$${data.monthlyMiscDonations.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
-          subtitle="This month (unmatched)"
-          color="text-orange-600"
-          bgColor="bg-orange-50"
-          onClick={() => navigate('/unmatched')}
         />
       </div>
 
@@ -176,7 +177,7 @@ export default function DashboardPage() {
           <p className="text-sm text-muted-foreground">Loading stats...</p>
         ) : stats ? (
           <div>
-            <div className="grid grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-3 gap-4 mb-4">
               {stats.breakdown.map(b => (
                 <div key={b.category} className="border border-border rounded-lg p-4">
                   <p className="text-xs text-muted-foreground">{CATEGORY_LABELS[b.category] || b.category}</p>
