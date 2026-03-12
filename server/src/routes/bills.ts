@@ -79,4 +79,15 @@ router.put('/bills/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Delete a bill (cascades to line items)
+router.delete('/bills/:id', async (req: Request, res: Response) => {
+  try {
+    await prisma.bill.delete({ where: { id: req.params.id as string } });
+    res.json({ message: 'Bill deleted' });
+  } catch (err) {
+    console.error('Error deleting bill:', err);
+    res.status(500).json({ message: 'Failed to delete bill' });
+  }
+});
+
 export default router;

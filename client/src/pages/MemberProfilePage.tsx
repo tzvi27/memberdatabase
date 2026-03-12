@@ -279,7 +279,7 @@ export default function MemberProfilePage() {
           {activeTab === 'recurring' && <RecurringTab items={member.recurringDonations} onUpdated={loadMember} />}
           {activeTab === 'donations' && <DonationsTab items={member.oneTimeDonations} memberId={member.id} onAdded={loadMember} />}
           {activeTab === 'bills' && <BillsTab items={member.bills} memberId={member.id} onAdded={loadMember} />}
-          {activeTab === 'zelle' && <ZelleTab items={member.zellePayments} />}
+          {activeTab === 'zelle' && <ZelleTab items={member.zellePayments} onUpdated={loadMember} />}
         </div>
       </div>
       {showDeleteConfirm && (
@@ -491,6 +491,15 @@ function DonationsTab({ items, memberId, onAdded }: { items: OneTimeDonation[]; 
     } catch { /* ignore */ } finally { setSaving(false); }
   }
 
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this donation? This cannot be undone.')) return;
+    try {
+      await api.delete(`/members/donations/${id}`);
+      onAdded();
+      toast('Donation deleted');
+    } catch { toast('Failed to delete donation', 'error'); }
+  }
+
   return (
     <div>
       <div className="flex justify-end mb-3">
@@ -550,7 +559,10 @@ function DonationsTab({ items, memberId, onAdded }: { items: OneTimeDonation[]; 
                 <td className="py-2 pr-4 whitespace-nowrap">${Number(d.amount).toFixed(2)}</td>
                 <td className="py-2 pr-4 whitespace-nowrap">{{ CREDIT_CARD: 'Credit Card', DONORS_FUND: 'Donors Fund', OJC: 'OJC', ZELLE: 'Zelle', CASH: 'Cash', CHECK: 'Check', OTHER: 'Other' }[d.source] || d.source}</td>
                 <td className="py-2 pr-4">{d.description || '-'}</td>
-                <td className="py-2"><OpenReceipt url={`/api/members/${memberId}/receipt/${d.id}`} label="Receipt" /></td>
+                <td className="py-2 flex items-center gap-2">
+                  <OpenReceipt url={`/api/members/${memberId}/receipt/${d.id}`} label="Receipt" />
+                  <button onClick={() => handleDelete(d.id)} title="Delete donation" className="text-muted-foreground hover:text-destructive"><Trash2 size={12} /></button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -596,6 +608,15 @@ function BillsTab({ items, memberId, onAdded }: { items: Bill[]; memberId: strin
       await api.put(`/members/bills/${billId}`, { status });
       onAdded();
     } catch { /* ignore */ }
+  }
+
+  async function deleteBill(billId: string) {
+    if (!confirm('Delete this bill? This cannot be undone.')) return;
+    try {
+      await api.delete(`/members/bills/${billId}`);
+      onAdded();
+      toast('Bill deleted');
+    } catch { toast('Failed to delete bill', 'error'); }
   }
 
   return (
@@ -650,6 +671,7 @@ function BillsTab({ items, memberId, onAdded }: { items: Bill[]; memberId: strin
                 <span className="text-sm">{new Date(b.date).toLocaleDateString()}</span>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">${Number(b.totalAmount).toFixed(2)}</span>
+                  <button onClick={() => deleteBill(b.id)} title="Delete bill" className="text-muted-foreground hover:text-destructive"><Trash2 size={13} /></button>
                   <select value={b.status} onChange={e => updateBillStatus(b.id, e.target.value)}
                     className={`text-xs px-2 py-0.5 rounded-full border-0 cursor-pointer ${
                       b.status === 'PAID' ? 'bg-green-100 text-green-700' :
@@ -754,20 +776,32 @@ function AnnualReceiptSection({ memberId }: { memberId: string }) {
   );
 }
 
-function ZelleTab({ items }: { items: ZellePayment[] }) {
+function ZelleTab({ items, onUpdated }: { items: ZellePayment[]; onUpdated: () => void }) {
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this Zelle payment? This cannot be undone.')) return;
+    try {
+      await api.delete(`/zelle/${id}`);
+      onUpdated();
+      toast('Zelle payment deleted');
+    } catch { toast('Failed to delete Zelle payment', 'error'); }
+  }
+
   if (!items.length) return <p className="text-sm text-muted-foreground">No Zelle payments.</p>;
   return (
     <table className="w-full text-sm">
       <thead><tr className="text-left text-muted-foreground">
-        <th className="pb-2">Date</th><th className="pb-2">Amount</th><th className="pb-2">Sender</th><th className="pb-2">Transaction #</th>
+        <th className="pb-2">Date</th><th className="pb-2">Amount</th><th className="pb-2">Sender</th><th className="pb-2">Transaction #</th><th className="pb-2"></th>
       </tr></thead>
       <tbody>
         {items.map(z => (
           <tr key={z.id} className="border-t border-border">
-            <td className="py-2">{new Date(z.date).toLocaleDateString()}</td>
-            <td className="py-2">${Number(z.amount).toFixed(2)}</td>
-            <td className="py-2">{z.senderName}</td>
-            <td className="py-2 text-muted-foreground">{z.transactionNumber || '-'}</td>
+            <td className="py-2 pr-4">{new Date(z.date).toLocaleDateString()}</td>
+            <td className="py-2 pr-4">${Number(z.amount).toFixed(2)}</td>
+            <td className="py-2 pr-4">{z.senderName}</td>
+            <td className="py-2 pr-4 text-muted-foreground">{z.transactionNumber || '-'}</td>
+            <td className="py-2">
+              <button onClick={() => handleDelete(z.id)} title="Delete Zelle payment" className="text-muted-foreground hover:text-destructive"><Trash2 size={13} /></button>
+            </td>
           </tr>
         ))}
       </tbody>

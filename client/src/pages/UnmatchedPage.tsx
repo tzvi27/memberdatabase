@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search, CheckCircle, Inbox, RefreshCw, Users, Heart } from 'lucide-react';
+import { Search, CheckCircle, Inbox, RefreshCw, Users, Heart, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
+import { toast } from '../lib/toast';
 
 interface UnmatchedItem {
   id: string;
@@ -122,6 +123,15 @@ export default function UnmatchedPage() {
     } finally { setRerunning(false); }
   }
 
+  async function deleteItem(item: UnmatchedItem) {
+    if (!confirm(`Delete this donation from "${item.donorName}"? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/unmatched/${item.id}?type=${item.type}`);
+      toast('Donation deleted');
+      load();
+    } catch { toast('Failed to delete', 'error'); }
+  }
+
   function startMatching(item: UnmatchedItem) {
     setMatchingId(item.id);
     setMatchingType(item.type);
@@ -197,6 +207,7 @@ export default function UnmatchedPage() {
                 <th className="text-left px-4 py-2 font-medium">Description</th>
                 <th className="text-right px-4 py-2 font-medium">Amount</th>
                 <th className="text-left px-4 py-2 font-medium">Action</th>
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -249,6 +260,11 @@ export default function UnmatchedPage() {
                         <CheckCircle size={12} /> Match
                       </button>
                     )}
+                  </td>
+                  <td className="px-4 py-2">
+                    <button onClick={() => deleteItem(item)} title="Delete" className="text-muted-foreground hover:text-destructive">
+                      <Trash2 size={14} />
+                    </button>
                   </td>
                 </tr>
               ))}
